@@ -55,6 +55,29 @@ class StyloristaApi {
     return _get('/v1/account/profile', const {}, token: token);
   }
 
+  Future<Map<String, dynamic>> updateAccountProfile({
+    required String token,
+    required String name,
+    required double heightCm,
+    String? avatarBase64,
+    bool updateAvatar = false,
+  }) {
+    return _put('/v1/account/profile', {
+      'name': name.trim(),
+      'height_cm': heightCm,
+      if (updateAvatar) 'avatar_base64': avatarBase64,
+    }, token: token);
+  }
+
+  Future<void> logoutAccount({required String token}) async {
+    await _post(
+      '/v1/auth/logout',
+      const {},
+      token: token,
+      timeout: const Duration(seconds: 15),
+    );
+  }
+
   Future<Map<String, dynamic>> saveAccountMeasurements({
     required String token,
     required Map<String, double> measurements,

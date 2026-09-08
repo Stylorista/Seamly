@@ -10,6 +10,7 @@ from .ai_engine import StyloristaEngine
 from .account_store import (
     AccountExistsError,
     InvalidCredentialsError,
+    StaleMeasurementsError,
     create_account_store,
 )
 from .appearance_analysis import AppearanceAnalysisError, AppearanceAnalyzer
@@ -19,6 +20,7 @@ from .schemas import (
     AccountAuthResponse,
     AccountLoginRequest,
     AccountProfile,
+    AccountProfileUpdateRequest,
     AccountRegisterRequest,
     BodyScanRequest,
     BodyScanResponse,
@@ -42,7 +44,7 @@ from .shop_catalog import ShopCatalogService
 app = FastAPI(
     title="FashionTech API",
     description="Privacy-first fashion fit, personal color and seasonal styling MVP.",
-    version="1.4.0",
+    version="1.7.0",
 )
 
 app.add_middleware(
@@ -135,7 +137,31 @@ def save_account_measurements(
         )
     except InvalidCredentialsError as error:
         raise HTTPException(status_code=401, detail=str(error)) from error
+    except StaleMeasurementsError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return AccountProfile.model_validate(profile)
+
+
+@app.put("/v1/account/profile", response_model=AccountProfile)
+def update_account_profile(
+    request: AccountProfileUpdateRequest,
+    authorization: str | None = Header(default=None),
+) -> AccountProfile:
+    try:
+        profile = account_store.update_profile(
+            token=_bearer_token(authorization), name=request.name,
+            height_cm=request.height_cm, avatar_base64=request.avatar_base64,
+            update_avatar="avatar_base64" in request.model_fields_set,
+        )
+        return AccountProfile.model_validate(profile)
+    except InvalidCredentialsError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+
+
+@app.post("/v1/auth/logout")
+def logout_account(authorization: str | None = Header(default=None)) -> dict[str, bool]:
+    account_store.logout(_bearer_token(authorization))
+    return {"signed_out": True}
 
 
 @app.get("/v1/news/feed", response_model=FashionNewsResponse)

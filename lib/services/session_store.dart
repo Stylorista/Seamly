@@ -7,6 +7,8 @@ class AccountSession {
     required this.token,
     required this.email,
     required this.heightCm,
+    this.name,
+    this.avatarBase64,
     this.measurements,
     this.sizeLabel,
   });
@@ -18,6 +20,8 @@ class AccountSession {
       token: response['token'] as String,
       email: profile['email'] as String,
       heightCm: (profile['height_cm'] as num).toDouble(),
+      name: profile['name'] as String?,
+      avatarBase64: profile['avatar_base64'] as String?,
       measurements: rawMeasurements is Map<String, dynamic>
           ? rawMeasurements.map(
               (key, value) => MapEntry(key, (value as num).toDouble()),
@@ -30,6 +34,8 @@ class AccountSession {
   final String token;
   final String email;
   final double heightCm;
+  final String? name;
+  final String? avatarBase64;
   final Map<String, double>? measurements;
   final String? sizeLabel;
 }
@@ -41,6 +47,8 @@ class SessionState {
     this.token,
     this.email,
     this.heightCm,
+    this.name,
+    this.avatarBase64,
     this.measurements,
     this.sizeLabel,
   });
@@ -51,6 +59,8 @@ class SessionState {
       token = null,
       email = null,
       heightCm = null,
+      name = null,
+      avatarBase64 = null,
       measurements = null,
       sizeLabel = null;
 
@@ -59,6 +69,8 @@ class SessionState {
   final String? token;
   final String? email;
   final double? heightCm;
+  final String? name;
+  final String? avatarBase64;
   final Map<String, double>? measurements;
   final String? sizeLabel;
 }
@@ -87,6 +99,8 @@ class PreferencesSessionStore implements SessionStore {
   static const _tokenKey = 'stylorista.account_token';
   static const _emailKey = 'stylorista.account_email';
   static const _heightKey = 'stylorista.height_cm';
+  static const _nameKey = 'stylorista.account_name';
+  static const _avatarKey = 'stylorista.account_avatar';
   static const _measurementsKey = 'stylorista.measurements';
   static const _sizeLabelKey = 'stylorista.size_label';
 
@@ -114,6 +128,8 @@ class PreferencesSessionStore implements SessionStore {
       token: token,
       email: preferences.getString(_emailKey),
       heightCm: preferences.getDouble(_heightKey),
+      name: preferences.getString(_nameKey),
+      avatarBase64: preferences.getString(_avatarKey),
       measurements: measurements,
       sizeLabel: preferences.getString(_sizeLabelKey),
     );
@@ -127,6 +143,9 @@ class PreferencesSessionStore implements SessionStore {
       await preferences.remove(_tokenKey);
       await preferences.remove(_emailKey);
       await preferences.remove(_heightKey);
+      await preferences.remove(_nameKey);
+      await preferences.remove(_avatarKey);
+      await preferences.remove(_welcomeCompletedKey);
       await preferences.remove(_measurementsKey);
       await preferences.remove(_sizeLabelKey);
     }
@@ -139,7 +158,20 @@ class PreferencesSessionStore implements SessionStore {
     await preferences.setString(_tokenKey, session.token);
     await preferences.setString(_emailKey, session.email);
     await preferences.setDouble(_heightKey, session.heightCm);
-    await saveMeasurementProfile(session.measurements ?? const {}, session.sizeLabel);
+    for (final entry in {
+      _nameKey: session.name,
+      _avatarKey: session.avatarBase64,
+    }.entries) {
+      if (entry.value == null) {
+        await preferences.remove(entry.key);
+      } else {
+        await preferences.setString(entry.key, entry.value!);
+      }
+    }
+    await saveMeasurementProfile(
+      session.measurements ?? const {},
+      session.sizeLabel,
+    );
   }
 
   @override
@@ -175,6 +207,8 @@ class MemorySessionStore implements SessionStore {
        _token = initialState.token,
        _email = initialState.email,
        _heightCm = initialState.heightCm,
+       _name = initialState.name,
+       _avatarBase64 = initialState.avatarBase64,
        _measurements = initialState.measurements,
        _sizeLabel = initialState.sizeLabel;
 
@@ -183,6 +217,8 @@ class MemorySessionStore implements SessionStore {
   String? _token;
   String? _email;
   double? _heightCm;
+  String? _name;
+  String? _avatarBase64;
   Map<String, double>? _measurements;
   String? _sizeLabel;
 
@@ -194,6 +230,8 @@ class MemorySessionStore implements SessionStore {
       token: _token,
       email: _email,
       heightCm: _heightCm,
+      name: _name,
+      avatarBase64: _avatarBase64,
       measurements: _measurements,
       sizeLabel: _sizeLabel,
     );
@@ -206,6 +244,9 @@ class MemorySessionStore implements SessionStore {
       _token = null;
       _email = null;
       _heightCm = null;
+      _name = null;
+      _avatarBase64 = null;
+      _welcomeCompleted = false;
       _measurements = null;
       _sizeLabel = null;
     }
@@ -217,6 +258,8 @@ class MemorySessionStore implements SessionStore {
     _token = session.token;
     _email = session.email;
     _heightCm = session.heightCm;
+    _name = session.name;
+    _avatarBase64 = session.avatarBase64;
     _measurements = session.measurements;
     _sizeLabel = session.sizeLabel;
   }

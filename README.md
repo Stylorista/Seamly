@@ -3,8 +3,9 @@
 FashionTech is a privacy-conscious fashion styling MVP built with Flutter and FastAPI. It combines:
 
 - database-backed registration, hashed passwords, 30-day session tokens, and a one-time welcome screen;
+- a header account button for editing your name, height in centimetres, and private profile picture, plus current-session logout;
 - guided fashion measurements and a starting-size recommendation;
-- a guided, consent-gated camera or photo scan that instructs users to move to a well-lit area, frame their full body, estimates 11 garment measurements using the height saved during registration, and places a lighting-checked color-season palette below the camera result;
+- a guided, consent-gated camera or photo scan that instructs users to move to a well-lit area, frame their full body, estimates 11 garment measurements using the height saved in their account profile, and places a lighting-checked color-season palette below the camera result;
 - a source-linked shop that ranks exact marketplace listings when an approved
   product feed is connected, with image-free Shopee, Lazada, and Temu searches
   as the honest fallback;
@@ -99,9 +100,11 @@ python -m pytest
 
 ## Privacy boundary
 
-The body-scan and profile-accessory prototypes send a selected photo to the configured API only after an explicit consent checkbox. The API decodes and analyzes it in memory and does not include photo storage or training reuse. Only a scan that passes the person, framing, and confidence checks can update the signed-in account's measurement profile.
+The body-scan and profile-accessory prototypes send a selected photo to the configured API only after an explicit consent checkbox. These analysis endpoints process the image in memory without retaining it or reusing it for training. Only a scan that passes the person, framing, and confidence checks can update the signed-in account's measurement profile.
 
-The camera estimator needs a known height because an ordinary single photo has no absolute centimetre scale. That height is collected once during account creation and reused silently for scans. The estimator is not validated for purchasing, tailoring, biometric identification, or medical use. Continuous measurement quality must be evaluated against consented ground-truth tape measurements using centimetre error and within-tolerance rates; a 98% ROC-AUC claim would be technically inappropriate and is not made.
+Account pictures are separate: choosing a picture previews it on-device, and **Save changes** uploads it to the authenticated account. The API accepts JPEG, PNG, and WebP pictures up to 2 MB / 16 megapixels, resizes them to a maximum 512-pixel edge, and re-encodes them without original photo metadata. Pictures are stored in the account database and returned only with an authenticated profile or successful login. **Remove photo**, then **Save changes**, deletes the saved picture value. Device-cached account data is cleared at logout; online logout also revokes that session token.
+
+The camera estimator needs a known height because an ordinary single photo has no absolute centimetre scale. Check your actual height in **Home → profile button → Height** before scanning; legacy registration initializes this value to 165 cm. Changing height invalidates saved scan estimates and size recommendations, and stale-height scan saves are rejected by the API. The estimator is not validated for purchasing, tailoring, biometric identification, or medical use. Continuous measurement quality must be evaluated against consented ground-truth tape measurements using centimetre error and within-tolerance rates; a 98% ROC-AUC claim would be technically inappropriate and is not made.
 
 ## Important naming note
 

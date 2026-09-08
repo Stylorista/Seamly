@@ -10,9 +10,11 @@ class AuthScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.onAuthenticated,
+    this.notice,
   });
 
   final StyloristaApi api;
+  final String? notice;
   final Future<void> Function(AccountSession session, bool isNewAccount)
   onAuthenticated;
 
@@ -148,6 +150,23 @@ class _AuthScreenState extends State<AuthScreen> {
                               ),
                             ],
                             const SizedBox(height: 24),
+                            if (widget.notice != null) ...[
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Semantics(
+                                  liveRegion: true,
+                                  child: Text(
+                                    widget.notice!,
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                             AnimatedSize(
                               duration: const Duration(milliseconds: 260),
                               curve: Curves.easeOutCubic,

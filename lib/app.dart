@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'features/color_analysis_screen.dart';
+import 'features/account_screen.dart';
 import 'features/auth_screen.dart';
 import 'features/camera_measurement_screen.dart';
 import 'features/fashion_news_screen.dart';
@@ -67,6 +68,16 @@ class _AuthGateState extends State<AuthGate> {
   double? _referenceHeightCm;
   Map<String, double>? _measurements;
   String? _sizeLabel;
+  AccountSession? _account;
+  String? _signedOutNotice;
+  int _accountRevision = 0;
+  Future<void> _storageQueue = Future<void>.value();
+
+  Future<void> _store(Future<void> Function() action) {
+    final next = _storageQueue.then((_) => action());
+    _storageQueue = next.catchError((Object _) {});
+    return next;
+  }
 
   @override
   void initState() {
@@ -101,6 +112,19 @@ class _AuthGateState extends State<AuthGate> {
       _referenceHeightCm = session.heightCm;
       _measurements = session.measurements;
       _sizeLabel = session.sizeLabel;
+      if (session.token != null &&
+          session.email != null &&
+          session.heightCm != null) {
+        _account = AccountSession(
+          token: session.token!,
+          email: session.email!,
+          heightCm: session.heightCm!,
+          name: session.name,
+          avatarBase64: session.avatarBase64,
+          measurements: session.measurements,
+          sizeLabel: session.sizeLabel,
+        );
+      }
       _ready = true;
     });
     final token = session.token;
@@ -110,15 +134,26 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _refreshAccountProfile(String token) async {
+    final revision = _accountRevision;
     try {
       final profile = await widget.api.fetchAccountProfile(token: token);
       final account = AccountSession.fromApi({
         'token': token,
         'profile': profile,
       });
-      await widget.sessionStore.saveAccountSession(account);
-      if (!mounted || _accountToken != token) return;
+      if (!mounted || _accountToken != token || revision != _accountRevision) {
+        return;
+      }
+      await _store(() async {
+        if (_accountToken == token && revision == _accountRevision) {
+          await widget.sessionStore.saveAccountSession(account);
+        }
+      });
+      if (!mounted || _accountToken != token || revision != _accountRevision) {
+        return;
+      }
       setState(() {
+        _account = account;
         _referenceHeightCm = account.heightCm;
         _measurements = account.measurements;
         _sizeLabel = account.sizeLabel;
@@ -129,17 +164,22 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _authenticate(AccountSession session, bool isNewAccount) async {
+    _accountRevision++;
     try {
-      await widget.sessionStore.saveAccountSession(session);
-      await widget.sessionStore.setWelcomeCompleted(!isNewAccount);
+      await _store(() async {
+        await widget.sessionStore.saveAccountSession(session);
+        await widget.sessionStore.setWelcomeCompleted(!isNewAccount);
+      });
     } on Exception {
       // The user can still enter the app if device storage is unavailable.
     }
     if (!mounted) return;
     setState(() {
       _authenticated = true;
+      _signedOutNotice = null;
       _welcomeCompleted = !isNewAccount;
       _accountToken = session.token;
+      _account = session;
       _referenceHeightCm = session.heightCm;
       _measurements = session.measurements;
       _sizeLabel = session.sizeLabel;
@@ -156,6 +196,49 @@ class _AuthGateState extends State<AuthGate> {
     setState(() => _welcomeCompleted = true);
   }
 
+  Future<void> _updateAccount(AccountSession account) async {
+    if (!mounted || account.token != _accountToken) return;
+    _accountRevision++;
+    setState(() {
+      _account = account;
+      _referenceHeightCm = account.heightCm;
+      _measurements = account.measurements;
+      _sizeLabel = account.sizeLabel;
+    });
+    try {
+      await _store(() => widget.sessionStore.saveAccountSession(account));
+    } on Exception {
+      // The server has saved the authoritative profile; refresh it next launch.
+    }
+  }
+
+  Future<bool> _logout() async {
+    _accountRevision++;
+    final token = _accountToken;
+    var remoteLogout = token == null;
+    try {
+      if (token != null) await widget.api.logoutAccount(token: token);
+      remoteLogout = true;
+    } on Exception {
+      // Still let the user leave the account on this device while offline.
+    }
+    await _store(() => widget.sessionStore.setAuthenticated(false));
+    if (!mounted) return remoteLogout;
+    setState(() {
+      _authenticated = false;
+      _signedOutNotice = remoteLogout
+          ? null
+          : 'Logged out on this device. Server logout could not be confirmed while offline.';
+      _welcomeCompleted = false;
+      _accountToken = null;
+      _account = null;
+      _referenceHeightCm = null;
+      _measurements = null;
+      _sizeLabel = null;
+    });
+    return remoteLogout;
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
@@ -169,6 +252,7 @@ class _AuthGateState extends State<AuthGate> {
               key: const ValueKey('auth-screen'),
               api: widget.api,
               onAuthenticated: _authenticate,
+              notice: _signedOutNotice,
             )
           : !_welcomeCompleted
           ? WelcomeScreen(
@@ -183,6 +267,9 @@ class _AuthGateState extends State<AuthGate> {
               referenceHeightCm: _referenceHeightCm,
               initialMeasurements: _measurements,
               initialSizeLabel: _sizeLabel,
+              account: _account,
+              onAccountSaved: _updateAccount,
+              onLogout: _logout,
             ),
     );
   }
@@ -246,6 +333,9 @@ class StyloristaShell extends StatefulWidget {
     this.referenceHeightCm,
     this.initialMeasurements,
     this.initialSizeLabel,
+    this.account,
+    this.onAccountSaved,
+    this.onLogout,
   });
 
   final StyloristaApi api;
@@ -254,6 +344,9 @@ class StyloristaShell extends StatefulWidget {
   final double? referenceHeightCm;
   final Map<String, double>? initialMeasurements;
   final String? initialSizeLabel;
+  final AccountSession? account;
+  final Future<void> Function(AccountSession)? onAccountSaved;
+  final Future<bool> Function()? onLogout;
 
   @override
   State<StyloristaShell> createState() => _StyloristaShellState();
@@ -264,6 +357,52 @@ class _StyloristaShellState extends State<StyloristaShell> {
   late String? _sizeLabel = widget.initialSizeLabel;
   String? _colorSeason;
   late Map<String, double>? _scannedMeasurements = widget.initialMeasurements;
+  int _scanRevision = 0;
+
+  @override
+  void didUpdateWidget(covariant StyloristaShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.referenceHeightCm != widget.referenceHeightCm ||
+        oldWidget.initialMeasurements != widget.initialMeasurements ||
+        oldWidget.initialSizeLabel != widget.initialSizeLabel) {
+      _scanRevision++;
+      _scannedMeasurements = widget.initialMeasurements;
+      _sizeLabel = widget.initialSizeLabel;
+    }
+  }
+
+  Future<void> _openAccount() async {
+    final account = widget.account;
+    if (account == null ||
+        widget.onLogout == null ||
+        widget.onAccountSaved == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to manage your account.')),
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AccountScreen(
+          api: widget.api,
+          account: account,
+          onSaved: (updated) async {
+            _scanRevision++;
+            await widget.onAccountSaved!(updated);
+            if (!mounted) return;
+            setState(() {
+              _scannedMeasurements = updated.measurements;
+              _sizeLabel = updated.sizeLabel;
+            });
+          },
+          onLogout: () {
+            _scanRevision++;
+            return widget.onLogout!();
+          },
+        ),
+      ),
+    );
+  }
 
   void _selectPage(int index) {
     if (index == _selectedIndex) return;
@@ -271,6 +410,8 @@ class _StyloristaShellState extends State<StyloristaShell> {
   }
 
   Future<void> _saveScanMeasurements(Map<String, double> values) async {
+    final revision = ++_scanRevision;
+    final token = widget.accountToken;
     setState(() => _scannedMeasurements = values);
     var savedSize = _sizeLabel;
     try {
@@ -279,15 +420,14 @@ class _StyloristaShellState extends State<StyloristaShell> {
         fitPreference: 'regular',
       );
       savedSize = result['recommended_size'] as String;
-      if (mounted) {
+      if (mounted && revision == _scanRevision) {
         setState(() => _sizeLabel = savedSize);
       }
     } on ApiException {
       // The scan remains useful even if the optional size follow-up is offline.
     }
+    if (!mounted || revision != _scanRevision) return;
     try {
-      await widget.sessionStore.saveMeasurementProfile(values, savedSize);
-      final token = widget.accountToken;
       if (token != null) {
         await widget.api.saveAccountMeasurements(
           token: token,
@@ -295,6 +435,8 @@ class _StyloristaShellState extends State<StyloristaShell> {
           sizeLabel: savedSize,
         );
       }
+      if (!mounted || revision != _scanRevision) return;
+      await widget.sessionStore.saveMeasurementProfile(values, savedSize);
     } on Exception {
       // Keep the accepted measurements on screen if cloud sync is unavailable.
     }
@@ -308,6 +450,8 @@ class _StyloristaShellState extends State<StyloristaShell> {
         onSelectFeature: _selectPage,
         sizeLabel: _sizeLabel,
         colorSeason: _colorSeason,
+        onOpenAccount: _openAccount,
+        avatarBase64: widget.account?.avatarBase64,
       ),
       ShopScreen(
         api: widget.api,
@@ -318,6 +462,7 @@ class _StyloristaShellState extends State<StyloristaShell> {
         onOpenMeasurements: () => _selectPage(5),
       ),
       CameraMeasurementScreen(
+        key: ValueKey('scanner-height-${widget.referenceHeightCm}'),
         api: widget.api,
         active: _selectedIndex == 2,
         referenceHeightCm: widget.referenceHeightCm,
@@ -335,8 +480,10 @@ class _StyloristaShellState extends State<StyloristaShell> {
         onOpenWeather: () => _selectPage(7),
         onOpenColorAnalysis: () => _selectPage(6),
         onColorSeasonAnalyzed: (value) => setState(() => _colorSeason = value),
+        onOpenAccount: _openAccount,
       ),
       MeasurementsScreen(
+        key: ValueKey('measurements-height-${widget.referenceHeightCm}'),
         api: widget.api,
         initialMeasurements: _scannedMeasurements,
         onSizeRecommended: (value) => setState(() => _sizeLabel = value),

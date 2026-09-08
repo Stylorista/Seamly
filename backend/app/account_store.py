@@ -21,12 +21,17 @@ class InvalidCredentialsError(ValueError):
     pass
 
 
+class StaleMeasurementsError(ValueError):
+    pass
+
+
 class AccountStore:
     """Small account store with hashed passwords and revocable session tokens.
 
     SQLite is intentionally used so local installs work without another service.
     In production, point STYLORISTA_DB_PATH at a persistent mounted disk. The API
-    never stores captured photos; only accepted measurement values are retained.
+    stores only accepted measurements and explicitly saved account pictures;
+    analysis photos are not retained.
     """
 
     _password_iterations = 310_000
@@ -103,13 +108,14 @@ class AccountStore:
                 """
                 SELECT
                     users.id, users.name, users.email, users.phone,
-                    users.location, users.height_cm,
+                    users.location, users.height_cm, account_pictures.avatar_base64,
                     measurement_profiles.measurements_json,
                     measurement_profiles.size_label,
                     measurement_profiles.scan_confidence,
                     measurement_profiles.updated_at
                 FROM sessions
                 JOIN users ON users.id = sessions.user_id
+                LEFT JOIN account_pictures ON account_pictures.user_id = users.id
                 LEFT JOIN measurement_profiles
                     ON measurement_profiles.user_id = users.id
                 WHERE sessions.token_hash = ? AND sessions.expires_at > ?
@@ -126,6 +132,7 @@ class AccountStore:
         return {
             "id": row["id"],
             "name": row["name"],
+            "avatar_base64": row["avatar_base64"],
             "email": row["email"],
             "phone": row["phone"],
             "location": row["location"],
@@ -147,6 +154,15 @@ class AccountStore:
         profile = self.profile_for_token(token)
         now = datetime.now(UTC).isoformat()
         with self._connect() as connection:
+            if round(float(measurements["height"]), 1) != round(float(profile["height_cm"]), 1):
+                raise StaleMeasurementsError("Your height changed. Please scan again before saving measurements.")
+            # Serialize height updates and scan saves on the same account row.
+            updated = connection.execute(
+                "UPDATE users SET height_cm = height_cm WHERE id = ? AND height_cm = ?",
+                (profile["id"], profile["height_cm"]),
+            )
+            if updated.rowcount != 1:
+                raise StaleMeasurementsError("Your height changed. Please scan again before saving measurements.")
             connection.execute(
                 """
                 INSERT INTO measurement_profiles (
@@ -168,6 +184,41 @@ class AccountStore:
                 ),
             )
         return self.profile_for_token(token)
+
+    def update_profile(
+        self, *, token: str, name: str, height_cm: float,
+        avatar_base64: str | None = None, update_avatar: bool = False,
+    ) -> dict[str, Any]:
+        profile = self.profile_for_token(token)
+        with self._connect() as connection:
+            # Lock the account row before checking height so concurrent saves
+            # cannot restore estimates that use the previous calibration.
+            connection.execute("UPDATE users SET name = ? WHERE id = ?", (name, profile["id"]))
+            current = connection.execute("SELECT height_cm FROM users WHERE id = ?", (profile["id"],)).fetchone()
+            if float(current["height_cm"]) != height_cm:
+                connection.execute("UPDATE users SET height_cm = ? WHERE id = ?", (height_cm, profile["id"]))
+                connection.execute("DELETE FROM measurement_profiles WHERE user_id = ?", (profile["id"],))
+            if update_avatar:
+                connection.execute(
+                    """INSERT INTO account_pictures (user_id, avatar_base64) VALUES (?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET avatar_base64 = excluded.avatar_base64""",
+                    (profile["id"], avatar_base64),
+                )
+        return self.profile_for_token(token)
+
+    def logout(self, token: str) -> None:
+        self._ensure_schema()
+        with self._connect() as connection:
+            connection.execute("DELETE FROM sessions WHERE token_hash = ?", (self._token_hash(token),))
+
+    @staticmethod
+    def _ensure_picture_schema(connection: Any) -> None:
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS account_pictures (
+                user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                avatar_base64 TEXT
+            )"""
+        )
 
     def _create_session(self, user_id: str) -> str:
         token = secrets.token_urlsafe(32)
@@ -234,6 +285,7 @@ class AccountStore:
                         ON sessions(user_id);
                     """
                 )
+                self._ensure_picture_schema(connection)
             self._schema_ready = True
 
     @classmethod
@@ -359,6 +411,7 @@ class PostgresAccountStore(AccountStore):
                     ON sessions(user_id)
                     """
                 )
+                self._ensure_picture_schema(connection)
             self._schema_ready = True
 
 

@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from .avatar import normalize_avatar
+
 
 class Measurements(BaseModel):
     height: float = Field(ge=120, le=230, description="Height in centimetres")
@@ -50,6 +52,7 @@ class AccountLoginRequest(BaseModel):
 class AccountProfile(BaseModel):
     id: str
     name: str
+    avatar_base64: str | None = None
     email: str
     phone: str | None = None
     location: str | None = None
@@ -64,6 +67,30 @@ class AccountAuthResponse(BaseModel):
     token: str
     is_new_account: bool
     profile: AccountProfile
+
+
+class AccountProfileUpdateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    height_cm: float = Field(ge=120, le=230)
+    avatar_base64: str | None = Field(default=None, max_length=3_000_000)
+
+    @field_validator("height_cm")
+    @classmethod
+    def measurement_precision(cls, value: float) -> float:
+        return round(value, 1)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Enter at least two characters for your name.")
+        return value
+
+    @field_validator("avatar_base64")
+    @classmethod
+    def validate_avatar(cls, value: str | None) -> str | None:
+        return normalize_avatar(value) if value is not None else None
 
 
 class SavedMeasurementsRequest(BaseModel):

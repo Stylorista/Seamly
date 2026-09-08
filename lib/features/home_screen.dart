@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/stylorista_api.dart';
 import '../theme/stylorista_theme.dart';
+import '../widgets/account_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -10,12 +11,16 @@ class HomeScreen extends StatefulWidget {
     required this.onSelectFeature,
     required this.sizeLabel,
     required this.colorSeason,
+    this.onOpenAccount,
+    this.avatarBase64,
   });
 
   final StyloristaApi api;
   final ValueChanged<int> onSelectFeature;
   final String? sizeLabel;
   final String? colorSeason;
+  final VoidCallback? onOpenAccount;
+  final String? avatarBase64;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -119,10 +124,21 @@ class _HomeScreenState extends State<HomeScreen> {
                               'FashionTech',
                               style: TextStyle(
                                 fontFamily: 'serif',
-                                fontSize: 30,
+                                fontSize: 26,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: -1,
                               ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            key: const ValueKey('header-account'),
+                            tooltip: 'My account',
+                            onPressed:
+                                widget.onOpenAccount ??
+                                () => widget.onSelectFeature(4),
+                            icon: AccountAvatar(
+                              base64Photo: widget.avatarBase64,
                             ),
                           ),
                         ],

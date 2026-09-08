@@ -17,6 +17,7 @@ class ProfileScreen extends StatefulWidget {
     required this.onOpenWeather,
     required this.onOpenColorAnalysis,
     required this.onColorSeasonAnalyzed,
+    this.onOpenAccount,
   });
 
   final StyloristaApi api;
@@ -26,6 +27,7 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback onOpenWeather;
   final VoidCallback onOpenColorAnalysis;
   final ValueChanged<String> onColorSeasonAnalyzed;
+  final VoidCallback? onOpenAccount;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -87,7 +89,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: CustomScrollView(
         key: const ValueKey('profile-hub'),
         slivers: [
-          const SliverToBoxAdapter(child: _ProfileHeader()),
+          SliverToBoxAdapter(
+            child: _ProfileHeader(onOpenAccount: widget.onOpenAccount),
+          ),
           SliverToBoxAdapter(
             child: Container(
               constraints: BoxConstraints(
@@ -257,25 +261,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
+  const _ProfileHeader({this.onOpenAccount});
+
+  final VoidCallback? onOpenAccount;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(23, 18, 23, 30),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(23, 18, 23, 30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'FashionTech',
-            style: TextStyle(
-              color: Colors.white,
-              fontFamily: 'serif',
-              fontSize: 23,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'FashionTech',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'serif',
+                    fontSize: 23,
+                  ),
+                ),
+              ),
+              if (onOpenAccount != null)
+                IconButton(
+                  tooltip: 'My account',
+                  onPressed: onOpenAccount,
+                  icon: const Icon(
+                    Icons.manage_accounts_outlined,
+                    color: Colors.white,
+                  ),
+                ),
+            ],
           ),
-          SizedBox(height: 22),
-          Center(
+          const SizedBox(height: 22),
+          const Center(
             child: Text(
               'Curated for you!',
               style: TextStyle(
