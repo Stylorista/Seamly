@@ -23,6 +23,8 @@ from .schemas import (
     AccountProfile,
     AccountProfileUpdateRequest,
     AccountRegisterRequest,
+    BodyScanPreviewRequest,
+    BodyScanPreviewResponse,
     BodyScanRequest,
     BodyScanResponse,
     AppearanceAnalysisRequest,
@@ -74,7 +76,7 @@ account_store = create_account_store()
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "fashiontech", "version": app.version}
+    return {"status": "ok", "service": "seamly", "version": app.version}
 
 
 def _bearer_token(authorization: str | None) -> str:
@@ -225,6 +227,11 @@ async def home_weather(
 @app.post("/v1/size/recommend", response_model=SizeResponse)
 def recommend_size(request: SizeRequest) -> SizeResponse:
     return engine.recommend_size(request)
+
+
+@app.post("/v1/body-scan/preview", response_model=BodyScanPreviewResponse)
+def preview_body_scan(request: BodyScanPreviewRequest) -> BodyScanPreviewResponse:
+    return body_scan_estimator.preview(request)
 
 
 @app.post("/v1/body-scan/analyze", response_model=BodyScanResponse)

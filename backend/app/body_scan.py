@@ -8,7 +8,13 @@ from io import BytesIO
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from .schemas import BodyScanRequest, BodyScanResponse, Measurements
+from .schemas import (
+    BodyScanPreviewRequest,
+    BodyScanPreviewResponse,
+    BodyScanRequest,
+    BodyScanResponse,
+    Measurements,
+)
 
 
 MEASUREMENT_NAMES = (
@@ -52,6 +58,77 @@ class BodyScanEstimator:
     synthetic random-forest prediction. Low-confidence derived values stay in
     the API response for compatibility but are explicitly excluded from display.
     """
+
+    def preview(self, request: BodyScanPreviewRequest) -> BodyScanPreviewResponse:
+        """Live viewfinder readiness check (no measurements)."""
+        try:
+            image = self._decode_image(request.image_base64)
+            array = self._prepare_image(image)
+        except BodyScanError as error:
+            return BodyScanPreviewResponse(
+                ready=False,
+                person_detected=False,
+                person_confidence=0.0,
+                guidance=str(error),
+                bbox=None,
+            )
+        try:
+            self._validate_lighting(array)
+        except BodyScanError as error:
+            return BodyScanPreviewResponse(
+                ready=False,
+                person_detected=False,
+                person_confidence=0.0,
+                guidance=str(error),
+                bbox=None,
+            )
+        try:
+            mask, _separation = self._foreground_mask(array)
+            mask = self._largest_connected_component(mask, min_fraction=0.012)
+            bounds = self._subject_bounds(mask, min_height_fraction=0.34)
+            person_confidence, _warnings = self._validate_person_shape(
+                mask, bounds, lenient=True
+            )
+        except BodyScanError as error:
+            return BodyScanPreviewResponse(
+                ready=False,
+                person_detected=False,
+                person_confidence=0.0,
+                guidance=str(error),
+                bbox=None,
+            )
+
+        height, width = mask.shape
+        x_min, y_min, x_max, y_max = bounds
+        bbox = [
+            round(x_min / width, 4),
+            round(y_min / height, 4),
+            round((x_max - x_min + 1) / width, 4),
+            round((y_max - y_min + 1) / height, 4),
+        ]
+        coverage = (y_max - y_min + 1) / height
+        center = ((x_min + x_max) / 2) / width
+        ready = person_confidence >= 0.52 and 0.42 <= coverage <= 0.96
+
+        if not ready:
+            if coverage < 0.42:
+                guidance = "Step back so your full body fits in the frame."
+            elif coverage > 0.96:
+                guidance = "Move back a little so your head and feet are visible."
+            elif abs(center - 0.5) > 0.22:
+                guidance = "Stand in the centre of the guide."
+            else:
+                guidance = "Face forward with arms slightly away from your sides."
+        else:
+            guidance = "Ready — hold still and take the photo."
+
+        return BodyScanPreviewResponse(
+            ready=ready,
+            person_detected=True,
+            person_confidence=round(float(np.clip(person_confidence, 0, 1)), 2),
+            guidance=guidance,
+            bbox=bbox,
+        )
 
     def analyze(self, request: BodyScanRequest) -> BodyScanResponse:
         image = self._decode_image(request.image_base64)
@@ -237,7 +314,10 @@ class BodyScanEstimator:
         return mask, float(np.clip(separation, 0, 1))
 
     @staticmethod
-    def _largest_connected_component(mask: np.ndarray) -> np.ndarray:
+    def _largest_connected_component(
+        mask: np.ndarray,
+        min_fraction: float = 0.025,
+    ) -> np.ndarray:
         height, width = mask.shape
         visited = np.zeros_like(mask, dtype=bool)
         best: list[tuple[int, int]] = []
@@ -258,7 +338,7 @@ class BodyScanEstimator:
             if len(component) > len(best):
                 best = component
 
-        if len(best) < height * width * 0.025:
+        if len(best) < height * width * min_fraction:
             raise BodyScanError(
                 "No person was detected. Stand fully visible against a plain, contrasting background."
             )
@@ -268,7 +348,10 @@ class BodyScanEstimator:
         return result
 
     @staticmethod
-    def _subject_bounds(mask: np.ndarray) -> tuple[int, int, int, int]:
+    def _subject_bounds(
+        mask: np.ndarray,
+        min_height_fraction: float = 0.43,
+    ) -> tuple[int, int, int, int]:
         height, width = mask.shape
         rows = np.where(mask.sum(axis=1) >= max(3, width * 0.018))[0]
         columns = np.where(mask.sum(axis=0) >= max(3, height * 0.012))[0]
@@ -277,7 +360,7 @@ class BodyScanEstimator:
 
         x_min, x_max = int(columns[0]), int(columns[-1])
         y_min, y_max = int(rows[0]), int(rows[-1])
-        if (y_max - y_min) < height * 0.43 or (x_max - x_min) < width * 0.08:
+        if (y_max - y_min) < height * min_height_fraction or (x_max - x_min) < width * 0.08:
             raise BodyScanError("Move back so the full person is visible from head to feet.")
         return x_min, y_min, x_max, y_max
 
@@ -286,6 +369,8 @@ class BodyScanEstimator:
         cls,
         mask: np.ndarray,
         bounds: tuple[int, int, int, int],
+        *,
+        lenient: bool = False,
     ) -> tuple[float, list[str]]:
         image_height, image_width = mask.shape
         x_min, y_min, x_max, y_max = bounds
@@ -311,8 +396,10 @@ class BodyScanEstimator:
             ]
         )
 
+        min_coverage = 0.42 if lenient else 0.55
+        max_center = 0.32 if lenient else 0.28
         hard_failure = (
-            height_coverage < 0.55
+            height_coverage < min_coverage
             or width_coverage < 0.08
             or width_coverage > 0.78
             or aspect < 1.45
@@ -320,7 +407,7 @@ class BodyScanEstimator:
             or not 0.18 <= fill <= 0.90
             or not 0.22 <= head_ratio <= 0.96
             or not 0.12 <= lower_ratio <= 1.25
-            or abs(center - 0.5) > 0.28
+            or abs(center - 0.5) > max_center
             or center_drift > 0.24
         )
         if hard_failure:
