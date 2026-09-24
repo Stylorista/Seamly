@@ -213,7 +213,12 @@ async def home_weather(
     except httpx.HTTPError as error:
         raise HTTPException(
             status_code=503,
-            detail="Live weather is temporarily unavailable. Please try again.",
+            detail=f"Live weather is temporarily unavailable: {type(error).__name__}: {error}",
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Live weather is temporarily unavailable: {type(error).__name__}: {error}",
         ) from error
 
 

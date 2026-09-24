@@ -36,7 +36,7 @@ class WeatherStyleService:
             return cached[1]
 
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(8.0),
+            timeout=httpx.Timeout(20.0, connect=10.0),
             follow_redirects=True,
             headers={"User-Agent": "FashionTech/1.3 weather-style"},
         ) as client:
