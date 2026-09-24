@@ -142,31 +142,46 @@ class WeatherStyleService:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(20.0, connect=10.0),
             follow_redirects=True,
-            headers={"User-Agent": "FashionTech/1.3 weather-style"},
+            headers={"User-Agent": "Seamly/1.3 weather-style"},
         ) as client:
+            location: dict[str, object] | None = None
             try:
                 location = await self._geocode(client, normalized_city)
-                forecast = await self._forecast(
-                    client,
-                    latitude=float(location["latitude"]),
-                    longitude=float(location["longitude"]),
-                )
-                response = self._build_response(
-                    location=location,
-                    forecast=forecast,
-                    requested_city=normalized_city,
-                    size_label=size_label,
-                    color_season=color_season,
-                )
             except httpx.HTTPStatusError as error:
                 if error.response.status_code != 429:
                     raise
+            if location is None:
                 response = await self._fetch_wttr_fallback(
                     client,
                     city=normalized_city,
+                    location=None,
                     size_label=size_label,
                     color_season=color_season,
                 )
+            else:
+                try:
+                    forecast = await self._forecast(
+                        client,
+                        latitude=float(location["latitude"]),
+                        longitude=float(location["longitude"]),
+                    )
+                    response = self._build_response(
+                        location=location,
+                        forecast=forecast,
+                        requested_city=normalized_city,
+                        size_label=size_label,
+                        color_season=color_season,
+                    )
+                except httpx.HTTPStatusError as error:
+                    if error.response.status_code != 429:
+                        raise
+                    response = await self._fetch_wttr_fallback(
+                        client,
+                        city=normalized_city,
+                        location=location,
+                        size_label=size_label,
+                        color_season=color_season,
+                    )
 
         self._cache[cache_key] = (datetime.now(UTC), response)
         return response
@@ -367,11 +382,16 @@ class WeatherStyleService:
         client: httpx.AsyncClient,
         *,
         city: str,
+        location: dict[str, object] | None,
         size_label: str | None,
         color_season: str | None,
     ) -> WeatherHomeResponse:
+        if location is not None:
+            query = f"{float(location['latitude'])},{float(location['longitude'])}"
+        else:
+            query = city
         response = await client.get(
-            f"https://wttr.in/{city}",
+            f"https://wttr.in/{query}",
             params={"format": "j1"},
         )
         response.raise_for_status()
@@ -383,10 +403,14 @@ class WeatherStyleService:
             raise WeatherServiceError("The next-day forecast is temporarily unavailable.")
 
         current = current_list[0]
-        location = (payload.get("nearest_area") or [{}])[0]
-        place_name = ((location.get("areaName") or [{}])[0]).get("value", city)
-        region = ((location.get("region") or [{}])[0]).get("value", "")
-        country = ((location.get("country") or [{}])[0]).get("value", "")
+        area = (payload.get("nearest_area") or [{}])[0]
+        place_name = ((area.get("areaName") or [{}])[0]).get("value", city)
+        region = ((area.get("region") or [{}])[0]).get("value", "")
+        country = ((area.get("country") or [{}])[0]).get("value", "")
+        if location is not None:
+            place_name = str(location.get("name") or place_name)
+            region = str(location.get("admin1") or region)
+            country = str(location.get("country") or country)
 
         def _desc(hour: dict[str, object]) -> str:
             items = hour.get("weatherDesc") or []

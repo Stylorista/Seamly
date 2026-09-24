@@ -580,6 +580,134 @@ def test_weather_home_response_echoes_requested_city(monkeypatch) -> None:
     assert body["fashion"][0]["title"].startswith("Rain-ready")
 
 
+def _wttr_payload() -> dict:
+    return {
+        "current_condition": [
+            {
+                "temp_C": "24",
+                "FeelsLikeC": "28",
+                "humidity": "90",
+                "windspeedKmph": "12",
+                "uvIndex": "3",
+                "weatherDesc": [{"value": "Patchy rain nearby"}],
+            }
+        ],
+        "weather": [
+            {
+                "date": "2026-09-25",
+                "maxtempC": "30",
+                "mintempC": "23",
+                "hourly": [
+                    {
+                        "time": "1200",
+                        "weatherDesc": [{"value": "Patchy rain nearby"}],
+                        "chanceofrain": "70",
+                        "uvIndex": "6",
+                    }
+                ],
+            },
+            {
+                "date": "2026-09-26",
+                "maxtempC": "29",
+                "mintempC": "22",
+                "hourly": [
+                    {
+                        "time": "1200",
+                        "weatherDesc": [{"value": "Light rain shower"}],
+                        "chanceofrain": "60",
+                        "uvIndex": "5",
+                    }
+                ],
+            },
+        ],
+        "nearest_area": [
+            {
+                "areaName": [{"value": "Other Town"}],
+                "region": [{"value": "Other Region"}],
+                "country": [{"value": "Otherland"}],
+            }
+        ],
+        "timezone": {"name": "Asia/Manila"},
+    }
+
+
+class _FakeWttrResponse:
+    def __init__(self, payload: dict) -> None:
+        self.status_code = 200
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _FakeWttrClient:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+        self.requested: list[str] = []
+
+    async def get(self, url: str, params: dict | None = None) -> _FakeWttrResponse:
+        self.requested.append(url)
+        return _FakeWttrResponse(self._payload)
+
+
+def test_wttr_fallback_uses_geocoded_coordinates_and_names() -> None:
+    import asyncio
+
+    from app.weather_service import WeatherStyleService
+
+    fake_client = _FakeWttrClient(_wttr_payload())
+    response = asyncio.run(
+        WeatherStyleService()._fetch_wttr_fallback(
+            fake_client,  # type: ignore[arg-type]
+            city="Kalibo",
+            location={
+                "name": "Kalibo Town",
+                "latitude": 11.70611,
+                "longitude": 120.36444,
+                "admin1": "Western Visayas",
+                "country": "Philippines",
+            },
+            size_label=None,
+            color_season=None,
+        )
+    )
+
+    assert fake_client.requested == ["https://wttr.in/11.70611,120.36444"]
+    assert response.location == "Kalibo Town"
+    assert response.region == "Western Visayas"
+    assert response.country == "Philippines"
+    assert response.requested_city == "Kalibo"
+    assert response.source == "wttr.in fallback"
+    assert response.fashion
+
+
+def test_wttr_fallback_without_geocode_queries_raw_city() -> None:
+    import asyncio
+
+    from app.weather_service import WeatherStyleService
+
+    fake_client = _FakeWttrClient(_wttr_payload())
+    response = asyncio.run(
+        WeatherStyleService()._fetch_wttr_fallback(
+            fake_client,  # type: ignore[arg-type]
+            city="Vigan",
+            location=None,
+            size_label=None,
+            color_season=None,
+        )
+    )
+
+    assert fake_client.requested == ["https://wttr.in/Vigan"]
+    assert response.location == "Other Town"
+    assert response.region == "Other Region"
+    assert response.country == "Otherland"
+    assert response.requested_city == "Vigan"
+    assert response.source == "wttr.in fallback"
+
+
 def test_local_development_origin_is_allowed() -> None:
     response = client.options(
         "/v1/size/recommend",
