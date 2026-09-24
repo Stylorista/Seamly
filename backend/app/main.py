@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 import httpx
@@ -47,12 +48,18 @@ app = FastAPI(
     version="1.7.0",
 )
 
+configured_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+] or ["https://stylorista-ai.jadesalvador3257.chatgpt.site"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://stylorista-ai.jadesalvador3257.chatgpt.site"],
+    allow_origins=configured_origins,
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["*"],
 )
 
