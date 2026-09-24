@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:seamly/app.dart';
 import 'package:seamly/features/home_screen.dart';
@@ -8,6 +9,10 @@ import 'package:seamly/services/session_store.dart';
 import 'package:seamly/services/seamly_api.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('shows the one-second loader only when the app starts', (
     tester,
   ) async {
@@ -153,6 +158,107 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('home-weather-details')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Tomorrow · Rain showers'), findsOneWidget);
+  });
+
+  testWidgets('changing city swaps weather and outfit recommendation', (
+    tester,
+  ) async {
+    _useMobileTestViewport(tester);
+    final api = _FakeNewsApi();
+    await tester.pumpWidget(
+      SeamlyApp(
+        api: api,
+        initiallyAuthenticated: true,
+        sessionStore: MemorySessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Manila'), findsOneWidget);
+    expect(find.text('Airy warm-weather layers'), findsOneWidget);
+    expect(find.text('Today · Partly cloudy'), findsOneWidget);
+
+    await tester.tap(find.text('Change city'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Cebu');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cebu'), findsOneWidget);
+    expect(find.text('Manila'), findsNothing);
+    expect(find.text('Airy warm-weather layers'), findsNothing);
+    expect(find.text('Rain-ready light everyday separates'), findsOneWidget);
+    expect(find.text('Today · Rain'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed city lookup shows the server message without stale outfit', (
+    tester,
+  ) async {
+    _useMobileTestViewport(tester);
+    final api = _FakeNewsApi();
+    await tester.pumpWidget(
+      SeamlyApp(
+        api: api,
+        initiallyAuthenticated: true,
+        sessionStore: MemorySessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Airy warm-weather layers'), findsOneWidget);
+
+    api.failWeatherWith =
+        'No weather location matched "Atlantis". Try adding the country.';
+    await tester.tap(find.text('Change city'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Atlantis');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'No weather location matched "Atlantis". Try adding the country.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Airy warm-weather layers'), findsNothing);
+    expect(find.text('Manila'), findsNothing);
+    expect(find.text('Atlantis'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('chosen city persists across app restarts', (tester) async {
+    _useMobileTestViewport(tester);
+    await tester.pumpWidget(
+      SeamlyApp(
+        api: _FakeNewsApi(),
+        initiallyAuthenticated: true,
+        sessionStore: MemorySessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Change city'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Cebu');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('Cebu'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      SeamlyApp(
+        api: _FakeNewsApi(),
+        initiallyAuthenticated: true,
+        sessionStore: MemorySessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cebu'), findsOneWidget);
+    expect(find.text('Manila'), findsNothing);
+    expect(find.text('Rain-ready light everyday separates'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('home supports large text on a narrow screen', (tester) async {
@@ -386,6 +492,7 @@ void _ignore() {}
 
 class _FakeNewsApi extends SeamlyApi {
   String? lastCategory;
+  String? failWeatherWith;
 
   @override
   Future<Map<String, dynamic>> loginAccount({
@@ -456,6 +563,10 @@ class _FakeNewsApi extends SeamlyApi {
     String? sizeLabel,
     String? colorSeason,
   }) async {
+    final failure = failWeatherWith;
+    if (failure != null) {
+      throw ApiException(failure);
+    }
     return _homeWeatherResponse(city);
   }
 
@@ -506,55 +617,64 @@ class _FakeNewsApi extends SeamlyApi {
   }
 }
 
-Map<String, dynamic> _homeWeatherResponse(String city) => {
-  'location': city,
-  'region': 'Metro Manila',
-  'country': 'Philippines',
-  'timezone': 'Asia/Manila',
-  'updated_at': DateTime.now().toUtc().toIso8601String(),
-  'current': {
-    'temperature_c': 30.0,
-    'apparent_temperature_c': 35.0,
-    'humidity_percent': 74,
-    'wind_kmh': 12.0,
-    'weather_code': 2,
-    'condition': 'Partly cloudy',
-    'is_day': true,
-  },
-  'tomorrow': {
-    'date': '2026-09-04',
-    'temperature_max_c': 31.0,
-    'temperature_min_c': 25.0,
-    'apparent_temperature_max_c': 36.0,
-    'precipitation_probability': 58,
-    'uv_index_max': 7.2,
-    'weather_code': 80,
-    'condition': 'Rain showers',
-  },
-  'fashion': [
-    {
-      'kind': 'outfit',
-      'title': 'Airy warm-weather layers',
-      'reason': 'Breathable pieces for today.',
+Map<String, dynamic> _homeWeatherResponse(String city) {
+  final manila = city.toLowerCase() == 'manila';
+  return {
+    'location': city,
+    'region': manila ? 'Metro Manila' : 'Central Visayas',
+    'country': 'Philippines',
+    'timezone': 'Asia/Manila',
+    'updated_at': DateTime.now().toUtc().toIso8601String(),
+    'current': {
+      'temperature_c': manila ? 30.0 : 24.0,
+      'apparent_temperature_c': manila ? 35.0 : 27.0,
+      'humidity_percent': manila ? 74 : 88,
+      'wind_kmh': manila ? 12.0 : 18.0,
+      'weather_code': manila ? 2 : 61,
+      'condition': manila ? 'Partly cloudy' : 'Rain',
+      'is_day': true,
     },
-    {
-      'kind': 'weather',
-      'title': 'Rain-ready finishing pieces',
-      'reason': 'Carry a compact umbrella.',
+    'tomorrow': {
+      'date': '2026-09-04',
+      'temperature_max_c': manila ? 31.0 : 28.0,
+      'temperature_min_c': manila ? 25.0 : 23.0,
+      'apparent_temperature_max_c': manila ? 36.0 : 31.0,
+      'precipitation_probability': manila ? 58 : 80,
+      'uv_index_max': manila ? 7.2 : 4.0,
+      'weather_code': manila ? 80 : 63,
+      'condition': manila ? 'Rain showers' : 'Heavy rain',
     },
-    {
-      'kind': 'fit',
-      'title': 'Your fit starting point',
-      'reason': 'Complete a body scan.',
-    },
-    {
-      'kind': 'color',
-      'title': 'Your color accent',
-      'reason': 'Add your saved color profile.',
-    },
-  ],
-  'source': 'Open-Meteo forecast',
-};
+    'fashion': [
+      {
+        'kind': 'outfit',
+        'title': manila
+            ? 'Airy warm-weather layers'
+            : 'Rain-ready light everyday separates',
+        'reason': manila
+            ? 'Breathable pieces for today.'
+            : 'Quick-dry layers for wet streets.',
+      },
+      {
+        'kind': 'weather',
+        'title': manila
+            ? 'Rain-ready finishing pieces'
+            : 'Water-resistant finishing pieces',
+        'reason': 'Carry a compact umbrella.',
+      },
+      {
+        'kind': 'fit',
+        'title': 'Your fit starting point',
+        'reason': 'Complete a body scan.',
+      },
+      {
+        'kind': 'color',
+        'title': 'Your color accent',
+        'reason': 'Add your saved color profile.',
+      },
+    ],
+    'source': 'Open-Meteo forecast',
+  };
+}
 
 void _useMobileTestViewport(WidgetTester tester) {
   tester.view.physicalSize = const Size(430, 900);

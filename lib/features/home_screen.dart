@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/seamly_api.dart';
 import '../theme/seamly_theme.dart';
@@ -29,6 +30,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const _cityKey = 'seamly.city';
+
   String _city = 'Manila';
   HomeWeather? _weather;
   String? _error;
@@ -38,7 +41,30 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadWeather();
+    _restoreCity();
+  }
+
+  Future<void> _restoreCity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_cityKey);
+      if (saved != null && saved.trim().length >= 2) {
+        _city = saved.trim();
+      }
+    } on Exception {
+      // Defaults to Manila when preferences are unavailable.
+    }
+    if (!mounted) return;
+    await _loadWeather();
+  }
+
+  Future<void> _persistCity(String city) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cityKey, city);
+    } on Exception {
+      // Persistence is best-effort; weather still works without it.
+    }
   }
 
   @override
@@ -64,6 +90,15 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (!mounted || serial != _requestSerial) return;
       setState(() => _weather = HomeWeather.fromJson(response));
+    } on ApiException catch (error) {
+      if (!mounted || serial != _requestSerial) return;
+      setState(() {
+        if (_weather == null) {
+          _error = error.message;
+        } else {
+          _error = 'Could not refresh. Showing the last forecast.';
+        }
+      });
     } on Exception {
       if (!mounted || serial != _requestSerial) return;
       setState(
@@ -84,8 +119,24 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (_) => _CityDialog(initialCity: _city),
     );
     if (!mounted || city == null) return;
-    setState(() => _city = city);
+    setState(() {
+      _city = city;
+      _weather = null;
+      _error = null;
+      _loading = true;
+    });
+    await _persistCity(city);
     await _loadWeather();
+  }
+
+  bool _matchesCity(String resolved) {
+    final requested = _city.toLowerCase();
+    final parts = resolved
+        .split(',')
+        .map((part) => part.trim().toLowerCase())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    return requested == resolved.toLowerCase() || parts.contains(requested);
   }
 
   @override
@@ -185,12 +236,30 @@ class _HomeScreenState extends State<HomeScreen> {
                                 spacing: 12,
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  Text(
-                                    weather?.location ?? _city,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _city,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      if (weather != null &&
+                                          !_matchesCity(
+                                            weather.displayLocation,
+                                          ))
+                                        Text(
+                                          'Forecast for ${weather.displayLocation}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.black54,
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                   TextButton(
                                     onPressed: _loading ? null : _changeCity,
@@ -319,7 +388,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   Text(
-                                    outfit?.title ?? 'Find your everyday look',
+                                    outfit?.title ??
+                                        (_loading
+                                            ? 'Checking $_city weather…'
+                                            : 'Find your everyday look'),
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700,
@@ -328,7 +400,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   const SizedBox(height: 6),
                                   Text(
                                     outfit?.reason ??
-                                        'Explore outfit ideas for your day.',
+                                        (_loading
+                                            ? 'Pulling in today’s forecast for $_city.'
+                                            : 'Explore outfit ideas for your day.'),
                                     style: const TextStyle(
                                       fontSize: 16,
                                       color: Colors.black87,

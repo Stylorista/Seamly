@@ -294,6 +294,292 @@ def test_home_weather_returns_current_tomorrow_and_fashion(monkeypatch) -> None:
     assert body["fashion"][0]["kind"] == "outfit"
 
 
+def test_geocode_prefers_philippine_result_over_foreign_namesakes() -> None:
+    from app.weather_service import WeatherStyleService
+
+    results = [
+        {"name": "Kalibo", "country": "Ivory Coast", "country_code": "CI", "population": 347},
+        {"name": "Kalibo", "country": "Philippines", "country_code": "PH", "population": 42749},
+        {"name": "Kalinago", "country": "Nepal", "country_code": "NP"},
+    ]
+    picked = WeatherStyleService._pick_geocode_result(
+        results, name="Kalibo", hint=None, query="Kalibo"
+    )
+    assert picked["country_code"] == "PH"
+
+
+def test_geocode_country_hint_overrides_default_bias() -> None:
+    from app.weather_service import WeatherStyleService
+
+    results = [
+        {"name": "Paris", "country": "Philippines", "country_code": "PH"},
+        {"name": "Paris", "country": "France", "country_code": "FR", "population": 2100000},
+    ]
+    picked = WeatherStyleService._pick_geocode_result(
+        results, name="Paris", hint="france", query="Paris, France"
+    )
+    assert picked["country_code"] == "FR"
+
+
+def test_geocode_hint_with_no_match_raises_clear_error() -> None:
+    from app.weather_service import WeatherStyleService, WeatherServiceError
+
+    results = [{"name": "Manila", "country": "Philippines", "country_code": "PH"}]
+    try:
+        WeatherStyleService._pick_geocode_result(
+            results, name="Manila", hint="mars", query="Manila, Mars"
+        )
+    except WeatherServiceError as error:
+        assert 'No weather location matched "Manila, Mars"' in str(error)
+    else:
+        raise AssertionError("expected WeatherServiceError for unmatched hint")
+
+
+def test_geocode_split_city_query_parses_comma_hint() -> None:
+    from app.weather_service import WeatherStyleService
+
+    assert WeatherStyleService._split_city_query("Aklan, Philippines") == (
+        "Aklan",
+        "Philippines",
+    )
+    assert WeatherStyleService._split_city_query("Aklan") == ("Aklan", None)
+    assert WeatherStyleService._split_city_query("  Kalibo , PH ") == ("Kalibo", "PH")
+
+
+def test_province_alias_routes_aklan_to_kalibo() -> None:
+    from app.weather_service import WeatherStyleService
+
+    assert WeatherStyleService._province_seat("Aklan", None) == ("Kalibo", "Aklan")
+    assert WeatherStyleService._province_seat("AKLAN", "Philippines") == (
+        "Kalibo",
+        "Aklan",
+    )
+    assert WeatherStyleService._province_seat("Aklan", "Nepal") is None
+    assert WeatherStyleService._province_seat("Manila", None) is None
+
+
+def test_city_attempts_try_alias_before_original_query() -> None:
+    from app.weather_service import WeatherStyleService
+
+    assert WeatherStyleService._city_attempts("Aklan") == [
+        ("Kalibo", "Philippines", "Aklan"),
+        ("Aklan", None, None),
+    ]
+    assert WeatherStyleService._city_attempts("Manila") == [("Manila", None, None)]
+    assert WeatherStyleService._city_attempts("Ilocos Norte") == [
+        ("Laoag", "Philippines", "Ilocos Norte"),
+        ("Ilocos Norte", None, None),
+    ]
+
+
+def test_city_attempts_disambiguate_known_ph_namesakes() -> None:
+    from app.weather_service import WeatherStyleService
+
+    assert WeatherStyleService._city_attempts("Baguio") == [
+        ("Baguio", None, "Benguet"),
+        ("Baguio", None, None),
+    ]
+    assert WeatherStyleService._city_attempts("Kalibo") == [
+        ("Kalibo", None, "Aklan"),
+        ("Kalibo", None, None),
+    ]
+    assert WeatherStyleService._city_attempts("Baguio, France") == [
+        ("Baguio", "France", None)
+    ]
+    assert WeatherStyleService._city_attempts("Lipa") == [
+        ("Lipa City", "Philippines", "Batangas")
+    ]
+
+
+def test_search_variants_retry_without_city_suffix() -> None:
+    from app.weather_service import WeatherStyleService
+
+    assert WeatherStyleService._search_variants("Masbate City") == [
+        "Masbate City",
+        "masbate",
+    ]
+    assert WeatherStyleService._search_variants("Manila") == ["Manila"]
+
+
+def test_geocode_pick_uses_region_hint_for_explicit_subdivision() -> None:
+    from app.weather_service import WeatherStyleService
+
+    results = [
+        {
+            "name": "Roxas",
+            "country": "Philippines",
+            "country_code": "PH",
+            "admin1": "Cagayan Valley",
+            "admin2": "Province of Isabela",
+            "population": 16618,
+        },
+        {
+            "name": "Roxas",
+            "country": "Philippines",
+            "country_code": "PH",
+            "admin1": "Mimaropa",
+            "admin2": "Province of Palawan",
+            "population": 15242,
+        },
+    ]
+    picked = WeatherStyleService._pick_geocode_result(
+        results,
+        name="Roxas",
+        hint="Palawan",
+        query="Roxas, Palawan",
+    )
+    assert picked["admin2"] == "Province of Palawan"
+
+
+def test_geocode_pick_prefers_expected_province_over_bigger_namesake() -> None:
+    from app.weather_service import WeatherStyleService
+
+    results = [
+        {
+            "name": "Kalibo",
+            "country": "Philippines",
+            "country_code": "PH",
+            "admin1": "Soccsksargen",
+            "admin2": "Province of South Cotabato",
+        },
+        {
+            "name": "Kalibo Town",
+            "country": "Philippines",
+            "country_code": "PH",
+            "admin1": "Western Visayas",
+            "admin2": "Province of Aklan",
+            "population": 89127,
+        },
+    ]
+    picked = WeatherStyleService._pick_geocode_result(
+        results,
+        name="Kalibo",
+        hint="Philippines",
+        query="Aklan",
+        province="Aklan",
+    )
+    assert picked["admin2"] == "Province of Aklan"
+
+
+def test_fashion_tips_change_with_weather_conditions() -> None:
+    from app.weather_service import WeatherStyleService
+    from app.schemas import WeatherDay
+
+    service = WeatherStyleService()
+    tomorrow = WeatherDay(
+        date="2026-09-25",
+        temperature_max_c=31,
+        temperature_min_c=25,
+        apparent_temperature_max_c=36,
+        precipitation_probability=10,
+        uv_index_max=7.2,
+        weather_code=1,
+        condition="Mainly clear",
+    )
+    hot_dry = service._fashion_tips(
+        temperature=31,
+        apparent=36,
+        humidity=55,
+        condition="Clear sky",
+        code=0,
+        tomorrow=tomorrow,
+        wind=8,
+        size_label=None,
+        color_season=None,
+    )
+    hot_wet = service._fashion_tips(
+        temperature=31,
+        apparent=36,
+        humidity=88,
+        condition="Rain",
+        code=61,
+        tomorrow=tomorrow,
+        wind=8,
+        size_label=None,
+        color_season=None,
+    )
+    mild = service._fashion_tips(
+        temperature=22,
+        apparent=21,
+        humidity=60,
+        condition="Partly cloudy",
+        code=2,
+        tomorrow=tomorrow,
+        wind=8,
+        size_label=None,
+        color_season=None,
+    )
+    cold = service._fashion_tips(
+        temperature=2,
+        apparent=-2,
+        humidity=70,
+        condition="Snow",
+        code=71,
+        tomorrow=tomorrow,
+        wind=18,
+        size_label=None,
+        color_season=None,
+    )
+
+    titles = [tips[0].title for tips in (hot_dry, hot_wet, mild, cold)]
+    assert len(set(titles)) == 4, titles
+    assert titles[0] == "Ultralight heat-ready layers"
+    assert titles[1].startswith("Rain-ready:")
+    assert titles[3] == "Insulated cold-weather layers"
+    assert "feels like" in cold[0].reason or "feels like" in str(cold[0].reason).lower()
+
+
+def test_weather_home_response_echoes_requested_city(monkeypatch) -> None:
+    async def fake_weather(
+        city: str,
+        size_label: str | None = None,
+        color_season: str | None = None,
+    ) -> WeatherHomeResponse:
+        return WeatherHomeResponse(
+            requested_city=city,
+            location="Aklan",
+            region="Aklan",
+            country="Philippines",
+            timezone="Asia/Manila",
+            updated_at=datetime.now(UTC),
+            current=WeatherCurrent(
+                temperature_c=24,
+                apparent_temperature_c=27,
+                humidity_percent=82,
+                wind_kmh=15,
+                weather_code=61,
+                condition="Rain",
+                is_day=True,
+            ),
+            tomorrow=WeatherDay(
+                date="2026-09-26",
+                temperature_max_c=29,
+                temperature_min_c=23,
+                apparent_temperature_max_c=32,
+                precipitation_probability=70,
+                uv_index_max=5.0,
+                weather_code=80,
+                condition="Rain showers",
+            ),
+            fashion=[
+                FashionWeatherTip(
+                    kind="outfit",
+                    title="Rain-ready light everyday separates",
+                    reason="Feels like 27°C with 82% humidity.",
+                )
+            ],
+            source="Open-Meteo forecast",
+        )
+
+    monkeypatch.setattr(weather_style_service, "fetch", fake_weather)
+    response = client.get("/v1/weather/home?city=Aklan")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requested_city"] == "Aklan"
+    assert body["fashion"][0]["title"].startswith("Rain-ready")
+
+
 def test_local_development_origin_is_allowed() -> None:
     response = client.options(
         "/v1/size/recommend",

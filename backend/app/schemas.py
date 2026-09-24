@@ -331,6 +331,7 @@ class FashionWeatherTip(BaseModel):
 
 
 class WeatherHomeResponse(BaseModel):
+    requested_city: str | None = None
     location: str
     region: str | None = None
     country: str | None = None
