@@ -136,28 +136,53 @@ class WeatherStyleService:
 
         cache_key = f"{normalized_city.lower()}|{size_label}|{color_season}"
         cached = self._cache.get(cache_key)
-        if cached and datetime.now(UTC) - cached[0] < timedelta(minutes=10):
+        if cached and datetime.now(UTC) - cached[0] < timedelta(minutes=30):
             return cached[1]
 
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(8.0),
+            timeout=httpx.Timeout(20.0, connect=10.0),
             follow_redirects=True,
             headers={"User-Agent": "Seamly/1.3 weather-style"},
         ) as client:
-            location = await self._geocode(client, normalized_city)
-            forecast = await self._forecast(
-                client,
-                latitude=float(location["latitude"]),
-                longitude=float(location["longitude"]),
-            )
+            location: dict[str, object] | None = None
+            try:
+                location = await self._geocode(client, normalized_city)
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code != 429:
+                    raise
+            if location is None:
+                response = await self._fetch_wttr_fallback(
+                    client,
+                    city=normalized_city,
+                    location=None,
+                    size_label=size_label,
+                    color_season=color_season,
+                )
+            else:
+                try:
+                    forecast = await self._forecast(
+                        client,
+                        latitude=float(location["latitude"]),
+                        longitude=float(location["longitude"]),
+                    )
+                    response = self._build_response(
+                        location=location,
+                        forecast=forecast,
+                        requested_city=normalized_city,
+                        size_label=size_label,
+                        color_season=color_season,
+                    )
+                except httpx.HTTPStatusError as error:
+                    if error.response.status_code != 429:
+                        raise
+                    response = await self._fetch_wttr_fallback(
+                        client,
+                        city=normalized_city,
+                        location=location,
+                        size_label=size_label,
+                        color_season=color_season,
+                    )
 
-        response = self._build_response(
-            location=location,
-            forecast=forecast,
-            requested_city=normalized_city,
-            size_label=size_label,
-            color_season=color_season,
-        )
         self._cache[cache_key] = (datetime.now(UTC), response)
         return response
 
@@ -351,6 +376,137 @@ class WeatherStyleService:
         )
         response.raise_for_status()
         return response.json()
+
+    async def _fetch_wttr_fallback(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        city: str,
+        location: dict[str, object] | None,
+        size_label: str | None,
+        color_season: str | None,
+    ) -> WeatherHomeResponse:
+        if location is not None:
+            query = f"{float(location['latitude'])},{float(location['longitude'])}"
+        else:
+            query = city
+        response = await client.get(
+            f"https://wttr.in/{query}",
+            params={"format": "j1"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+        current_list = payload.get("current_condition") or []
+        days = payload.get("weather") or []
+        if not current_list or len(days) < 2:
+            raise WeatherServiceError("The next-day forecast is temporarily unavailable.")
+
+        current = current_list[0]
+        area = (payload.get("nearest_area") or [{}])[0]
+        place_name = ((area.get("areaName") or [{}])[0]).get("value", city)
+        region = ((area.get("region") or [{}])[0]).get("value", "")
+        country = ((area.get("country") or [{}])[0]).get("value", "")
+        if location is not None:
+            place_name = str(location.get("name") or place_name)
+            region = str(location.get("admin1") or region)
+            country = str(location.get("country") or country)
+
+        def _desc(hour: dict[str, object]) -> str:
+            items = hour.get("weatherDesc") or []
+            if items and isinstance(items[0], dict):
+                return str(items[0].get("value", "")).strip()
+            return ""
+
+        def _code(desc: str) -> int:
+            d = desc.lower()
+            if "thunder" in d:
+                return 95
+            if "snow" in d:
+                return 71
+            if "drizzle" in d:
+                return 51
+            if "rain" in d or "shower" in d:
+                return 61
+            if "fog" in d or "mist" in d:
+                return 45
+            if "overcast" in d:
+                return 3
+            if "partly" in d or "cloud" in d:
+                return 2
+            if "clear" in d or "sun" in d:
+                return 0
+            return 2
+
+        noon_hours = []
+        for day in days[:2]:
+            hours = day.get("hourly") or []
+            noon = next(
+                (h for h in hours if str(h.get("time", "")) in {"1200", "12"}),
+                hours[len(hours) // 2] if hours else {},
+            )
+            noon_hours.append(noon or {})
+
+        day_list: list[WeatherDay] = []
+        for index in range(2):
+            day = days[index]
+            noon = noon_hours[index]
+            desc = _desc(noon) or _desc(current)
+            rain_values = [
+                int(h.get("chanceofrain") or 0) for h in (day.get("hourly") or [])
+            ]
+            uv_values = [
+                int(h.get("uvIndex") or 0) for h in (day.get("hourly") or [])
+            ]
+            high_c = float(day.get("maxtempC", 0))
+            day_list.append(
+                WeatherDay(
+                    date=str(day.get("date", "")),
+                    temperature_max_c=high_c,
+                    temperature_min_c=float(day.get("mintempC", 0)),
+                    apparent_temperature_max_c=high_c,
+                    precipitation_probability=max(rain_values) if rain_values else 0,
+                    uv_index_max=float(max(uv_values) if uv_values else 0),
+                    weather_code=_code(desc),
+                    condition=desc or "Clear",
+                )
+            )
+
+        current_desc = _desc(current) or "Clear"
+        temperature = float(current.get("temp_C", 0))
+        current_code = _code(current_desc)
+        current_weather = WeatherCurrent(
+            temperature_c=temperature,
+            apparent_temperature_c=float(current.get("FeelsLikeC", temperature)),
+            humidity_percent=round(float(current.get("humidity", 0))),
+            wind_kmh=float(current.get("windspeedKmph", 0)),
+            weather_code=current_code,
+            condition=current_desc,
+            is_day=bool(int(current.get("uvIndex", 0) or 0) > 0 or "sun" in current_desc.lower()),
+        )
+        tips = self._fashion_tips(
+            temperature=temperature,
+            apparent=current_weather.apparent_temperature_c,
+            humidity=current_weather.humidity_percent,
+            condition=current_weather.condition,
+            code=current_code,
+            tomorrow=day_list[1],
+            wind=float(current.get("windspeedKmph", 0)),
+            size_label=size_label,
+            color_season=color_season,
+        )
+        return WeatherHomeResponse(
+            requested_city=city,
+            location=place_name or city,
+            region=region or None,
+            country=country or None,
+            timezone=str(payload.get("timezone", {}).get("name", "auto")),
+            updated_at=datetime.now(UTC),
+            current=current_weather,
+            tomorrow=day_list[1],
+            fashion=tips,
+            source="wttr.in fallback",
+        )
 
     def _build_response(
         self,
