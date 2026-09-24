@@ -38,7 +38,7 @@ class WeatherStyleService:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(8.0),
             follow_redirects=True,
-            headers={"User-Agent": "FashionTech/1.3 weather-style"},
+            headers={"User-Agent": "Seamly/1.3 weather-style"},
         ) as client:
             location = await self._geocode(client, normalized_city)
             forecast = await self._forecast(

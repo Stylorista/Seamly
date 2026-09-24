@@ -94,15 +94,15 @@ class PreferencesSessionStore implements SessionStore {
   PreferencesSessionStore({Future<SharedPreferences>? preferences})
     : _preferences = preferences ?? SharedPreferences.getInstance();
 
-  static const _authenticatedKey = 'stylorista.authenticated';
-  static const _welcomeCompletedKey = 'stylorista.welcome_completed';
-  static const _tokenKey = 'stylorista.account_token';
-  static const _emailKey = 'stylorista.account_email';
-  static const _heightKey = 'stylorista.height_cm';
-  static const _nameKey = 'stylorista.account_name';
-  static const _avatarKey = 'stylorista.account_avatar';
-  static const _measurementsKey = 'stylorista.measurements';
-  static const _sizeLabelKey = 'stylorista.size_label';
+  static const _authenticatedKey = 'seamly.authenticated';
+  static const _welcomeCompletedKey = 'seamly.welcome_completed';
+  static const _tokenKey = 'seamly.account_token';
+  static const _emailKey = 'seamly.account_email';
+  static const _heightKey = 'seamly.height_cm';
+  static const _nameKey = 'seamly.account_name';
+  static const _avatarKey = 'seamly.account_avatar';
+  static const _measurementsKey = 'seamly.measurements';
+  static const _sizeLabelKey = 'seamly.size_label';
 
   final Future<SharedPreferences> _preferences;
 

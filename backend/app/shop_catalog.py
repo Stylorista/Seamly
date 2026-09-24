@@ -91,7 +91,7 @@ class ShopCatalogService:
         )
         disclosure = (
             "Every photo is supplied with the exact product record and opens that "
-            "listing; FashionTech does not substitute unrelated product images."
+            "listing; Seamly does not substitute unrelated product images."
             f"{rejected_note}"
         )
         return ShopProductsResponse(
@@ -113,7 +113,7 @@ class ShopCatalogService:
         feed_url = os.getenv("FASHIONTECH_SHOP_CATALOG_URL", "").strip()
         if not self._safe_feed_url(feed_url):
             return [], bool(feed_url), bool(feed_url)
-        headers = {"User-Agent": "FashionTech/1.4 product-catalog"}
+        headers = {"User-Agent": "Seamly/1.4 product-catalog"}
         bearer_token = os.getenv("FASHIONTECH_SHOP_CATALOG_TOKEN", "").strip()
         if bearer_token:
             headers["Authorization"] = f"Bearer {bearer_token}"

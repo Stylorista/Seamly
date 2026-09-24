@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../services/session_store.dart';
-import '../services/stylorista_api.dart';
+import '../services/seamly_api.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
@@ -13,7 +13,7 @@ class AuthScreen extends StatefulWidget {
     this.notice,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final String? notice;
   final Future<void> Function(AccountSession session, bool isNewAccount)
   onAuthenticated;
@@ -242,13 +242,13 @@ class _AuthLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Image.asset(
-      'assets/images/fashiontech_logo.png',
+      'assets/images/seamly_logo.png',
       key: const ValueKey('auth-logo'),
       width: 240,
       height: 240,
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
-      semanticLabel: 'FashionTech logo',
+      semanticLabel: 'Seamly logo',
     );
   }
 }
@@ -431,7 +431,7 @@ class _AuthCard extends StatelessWidget {
                     title: const Text('Terms & Conditions'),
                     content: const SingleChildScrollView(
                       child: Text(
-                        'FashionTech provides estimated styling, color, and body-measurement guidance. Results are not medical or tailoring advice. You control the photos you submit and should confirm measurements with a tape and the seller’s size chart before buying.',
+                        'Seamly provides estimated styling, color, and body-measurement guidance. Results are not medical or tailoring advice. You control the photos you submit and should confirm measurements with a tape and the seller’s size chart before buying.',
                       ),
                     ),
                     actions: [

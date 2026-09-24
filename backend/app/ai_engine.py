@@ -95,7 +95,7 @@ OUTFITS = [
 ]
 
 
-class StyloristaEngine:
+class SeamlyEngine:
     """Deterministic demo models for the MVP.
 
     The generated training sets are intentionally local and reproducible. They

@@ -29,7 +29,7 @@ def test_health() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert response.json()["version"] == "1.7.0"
-    assert response.json()["service"] == "fashiontech"
+    assert response.json()["service"] == "seamly"
 
 
 def test_shop_catalog_keeps_only_exact_source_linked_images(monkeypatch) -> None:
@@ -410,6 +410,45 @@ def test_body_scan_returns_all_measurement_labels() -> None:
     assert "height" in body["displayable_measurements"]
     assert 0 <= body["scan_confidence"] <= 1
     assert "Unvalidated measurement preview" in body["validation_status"]
+
+
+def test_body_scan_preview_reports_readiness_for_silhouette() -> None:
+    response = client.post(
+        "/v1/body-scan/preview",
+        json={"image_base64": _silhouette_photo(), "consent_confirmed": True},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["person_detected"] is True
+    assert body["ready"] is True
+    assert body["bbox"] is not None
+    assert len(body["bbox"]) == 4
+    assert "Ready" in body["guidance"]
+
+
+def test_body_scan_preview_rejects_blank_frame() -> None:
+    image = Image.new("RGB", (240, 480), "#EEE7DF")
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=90)
+    response = client.post(
+        "/v1/body-scan/preview",
+        json={
+            "image_base64": base64.b64encode(buffer.getvalue()).decode("ascii"),
+            "consent_confirmed": True,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is False
+    assert body["person_detected"] is False
+
+
+def test_body_scan_preview_requires_consent() -> None:
+    response = client.post(
+        "/v1/body-scan/preview",
+        json={"image_base64": _silhouette_photo(), "consent_confirmed": False},
+    )
+    assert response.status_code == 422
 
 
 def test_body_scan_rejects_photo_without_person() -> None:

@@ -1,4 +1,4 @@
-# FashionTech shop source contract
+# Seamly shop source contract
 
 The shop displays a product photo only when the backend receives that photo in
 the same normalized record as the exact marketplace listing. It does not scrape
@@ -48,7 +48,7 @@ and image-free marketplace searches.
 - Shopee: register and obtain the required product-data access through Shopee
   Open Platform, including seller authorization when required.
 - Lazada: register an application through Lazada Open Platform and use its
-  authorization and product APIs for the stores that authorize FashionTech.
+  authorization and product APIs for the stores that authorize Seamly.
 - Temu: register through Temu Partner Platform and request the applicable
   product-data permissions.
 

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../services/stylorista_api.dart';
-import '../theme/stylorista_theme.dart';
-import '../widgets/account_avatar.dart';
+import '../services/seamly_api.dart';
+import '../theme/seamly_theme.dart';
+import '../widgets/seamly_header.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -13,14 +13,16 @@ class HomeScreen extends StatefulWidget {
     required this.colorSeason,
     this.onOpenAccount,
     this.avatarBase64,
+    this.showHeader = true,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final ValueChanged<int> onSelectFeature;
   final String? sizeLabel;
   final String? colorSeason;
   final VoidCallback? onOpenAccount;
   final String? avatarBase64;
+  final bool showHeader;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -93,8 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
         .where((tip) => tip.kind == 'outfit')
         .firstOrNull;
     return ColoredBox(
-      color: StyloristaColors.cream,
+      color: SeamlyColors.cream,
       child: SafeArea(
+        top: widget.showHeader,
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _loadWeather,
@@ -109,41 +112,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Image.asset(
-                            'assets/images/fashiontech_logo.png',
-                            width: 68,
-                            height: 68,
-                            fit: BoxFit.contain,
-                            semanticLabel: 'FashionTech logo',
-                          ),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Text(
-                              'FashionTech',
-                              style: TextStyle(
-                                fontFamily: 'serif',
-                                fontSize: 26,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -1,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            key: const ValueKey('header-account'),
-                            tooltip: 'My account',
-                            onPressed:
-                                widget.onOpenAccount ??
-                                () => widget.onSelectFeature(4),
-                            icon: AccountAvatar(
-                              base64Photo: widget.avatarBase64,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+                      if (widget.showHeader) ...[
+                        SeamlyHeader(
+                          onOpenAccount: widget.onOpenAccount ??
+                              () => widget.onSelectFeature(4),
+                          avatarBase64: widget.avatarBase64,
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                       Material(
                         color: const Color(0xFF513225),
                         borderRadius: BorderRadius.circular(22),
@@ -233,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   children: [
                                     Icon(
                                       _weatherIcon(weather.current.weatherCode),
-                                      color: StyloristaColors.moss,
+                                      color: SeamlyColors.moss,
                                       size: 36,
                                     ),
                                     Text(

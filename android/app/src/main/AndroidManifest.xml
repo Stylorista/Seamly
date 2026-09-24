@@ -2,9 +2,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="FashionTech"
+        android:label="Seamly"
         android:name="${applicationName}"
-        android:icon="@drawable/fashiontech_logo">
+        android:icon="@drawable/seamly_logo">
         <activity
             android:name=".MainActivity"
             android:exported="true"

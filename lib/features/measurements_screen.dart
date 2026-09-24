@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../services/stylorista_api.dart';
-import '../theme/stylorista_theme.dart';
+import '../services/seamly_api.dart';
+import '../theme/seamly_theme.dart';
 import '../widgets/common.dart';
 
 class MeasurementsScreen extends StatefulWidget {
@@ -12,7 +12,7 @@ class MeasurementsScreen extends StatefulWidget {
     this.initialMeasurements,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final ValueChanged<String> onSizeRecommended;
   final Map<String, double>? initialMeasurements;
 
@@ -336,7 +336,7 @@ class _SizeResult extends StatelessWidget {
         .cast<Map<String, dynamic>>();
     final notes = (result['fit_notes'] as List).cast<String>();
     return Card(
-      color: StyloristaColors.ink,
+      color: SeamlyColors.ink,
       child: Padding(
         padding: const EdgeInsets.all(26),
         child: Column(

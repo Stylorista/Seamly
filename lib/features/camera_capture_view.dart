@@ -22,6 +22,9 @@ class CameraCaptureView extends StatelessWidget {
     required this.onSwitch,
     required this.onRetry,
     required this.onResults,
+    this.previewReady = false,
+    this.previewGuidance,
+    this.previewBbox,
   });
 
   final camera.CameraController? controller;
@@ -40,6 +43,9 @@ class CameraCaptureView extends StatelessWidget {
   final VoidCallback? onSwitch;
   final VoidCallback onRetry;
   final VoidCallback onResults;
+  final bool previewReady;
+  final String? previewGuidance;
+  final List<double>? previewBbox;
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +80,15 @@ class CameraCaptureView extends StatelessWidget {
                 if (ready && !captured)
                   const IgnorePointer(
                     child: CustomPaint(painter: _ThirdsGrid()),
+                  ),
+                if (ready && !captured && previewBbox != null)
+                  IgnorePointer(
+                    child: CustomPaint(
+                      painter: _BodyOutlinePainter(
+                        bbox: previewBbox!,
+                        ready: previewReady,
+                      ),
+                    ),
                   ),
                 const IgnorePointer(
                   child: DecoratedBox(
@@ -215,14 +230,20 @@ class CameraCaptureView extends StatelessWidget {
                                 ),
                               )
                             else if (!captured)
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 14),
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 14),
                                 child: Text(
-                                  'Even light · Head to toe in frame',
+                                  previewGuidance ??
+                                      'Even light · Head to toe in frame',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: previewReady
+                                        ? const Color(0xFF4ADE80)
+                                        : Colors.white,
                                     fontSize: 14,
+                                    fontWeight: previewReady
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
                                   ),
                                 ),
                               ),
@@ -438,4 +459,61 @@ class _ThirdsGrid extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _BodyOutlinePainter extends CustomPainter {
+  const _BodyOutlinePainter({required this.bbox, required this.ready});
+
+  final List<double> bbox;
+  final bool ready;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (bbox.length < 4) return;
+    final rect = Rect.fromLTWH(
+      bbox[0] * size.width,
+      bbox[1] * size.height,
+      bbox[2] * size.width,
+      bbox[3] * size.height,
+    );
+    final color = ready ? const Color(0xFF4ADE80) : Colors.white70;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = ready ? 4 : 2
+      ..color = color;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(28));
+    if (ready) {
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 12
+          ..color = color.withValues(alpha: 0.25)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+      );
+    }
+    canvas.drawRRect(rrect, paint);
+    final corner = 22.0;
+    final cornerPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = ready ? 5 : 3
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    void cornerPath(Offset start, Offset a, Offset b) {
+      final path = Path()
+        ..moveTo(start.dx + a.dx, start.dy + a.dy)
+        ..lineTo(start.dx, start.dy)
+        ..lineTo(start.dx + b.dx, start.dy + b.dy);
+      canvas.drawPath(path, cornerPaint);
+    }
+
+    cornerPath(rect.topLeft, Offset(corner, 0), Offset(0, corner));
+    cornerPath(rect.topRight, Offset(-corner, 0), Offset(0, corner));
+    cornerPath(rect.bottomLeft, Offset(corner, 0), Offset(0, -corner));
+    cornerPath(rect.bottomRight, Offset(-corner, 0), Offset(0, -corner));
+  }
+
+  @override
+  bool shouldRepaint(covariant _BodyOutlinePainter oldDelegate) =>
+      oldDelegate.ready != ready || oldDelegate.bbox != bbox;
 }

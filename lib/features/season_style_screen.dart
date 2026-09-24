@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../services/stylorista_api.dart';
-import '../theme/stylorista_theme.dart';
+import '../services/seamly_api.dart';
+import '../theme/seamly_theme.dart';
 import '../widgets/common.dart';
 
 class SeasonStyleScreen extends StatefulWidget {
@@ -12,7 +12,7 @@ class SeasonStyleScreen extends StatefulWidget {
     required this.colorSeason,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final String? sizeLabel;
   final String? colorSeason;
 
@@ -69,7 +69,7 @@ class _SeasonStyleScreenState extends State<SeasonStyleScreen> {
                 title:
                     'Dress for the climate you live in—not a generic calendar',
                 description:
-                    'FashionTech distinguishes tropical wet/dry cycles, arid heat and four-season climates, then matches the result to occasion and style.',
+                    'Seamly distinguishes tropical wet/dry cycles, arid heat and four-season climates, then matches the result to occasion and style.',
               ),
               const SizedBox(height: 20),
               Card(
@@ -289,7 +289,7 @@ class _StyleResult extends StatelessWidget {
             padding: const EdgeInsets.all(26),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [StyloristaColors.moss, Color(0xFF34432F)],
+                colors: [SeamlyColors.moss, Color(0xFF34432F)],
               ),
             ),
             child: Column(
@@ -339,7 +339,7 @@ class _StyleResult extends StatelessWidget {
                       .map(
                         (entry) => Chip(
                           avatar: CircleAvatar(
-                            backgroundColor: StyloristaColors.plum,
+                            backgroundColor: SeamlyColors.plum,
                             foregroundColor: Colors.white,
                             child: Text(
                               '${entry.key + 1}',
@@ -396,7 +396,7 @@ class _StyleResult extends StatelessWidget {
                       children: [
                         const Icon(
                           Icons.arrow_right,
-                          color: StyloristaColors.moss,
+                          color: SeamlyColors.moss,
                         ),
                         const SizedBox(width: 4),
                         Expanded(child: Text(note)),

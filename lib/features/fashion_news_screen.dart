@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../services/stylorista_api.dart';
-import '../theme/stylorista_theme.dart';
+import '../services/seamly_api.dart';
+import '../theme/seamly_theme.dart';
 
 class FashionNewsScreen extends StatefulWidget {
   const FashionNewsScreen({super.key, required this.api, this.active = true});
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final bool active;
 
   @override
@@ -69,7 +69,7 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
           .map((item) => FashionNewsPost.fromJson(item as Map<String, dynamic>))
           .where(
             (item) =>
-                item.publisher.toLowerCase() != 'stylorista discovery' &&
+                item.publisher.toLowerCase() != 'seamly discovery' &&
                 !item.summary.toLowerCase().contains(
                   'live sources are temporarily unavailable',
                 ),
@@ -207,7 +207,7 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
       color: const Color(0xFFF2F3F5),
       child: RefreshIndicator(
         onRefresh: _loadFeed,
-        color: StyloristaColors.sandText,
+        color: SeamlyColors.sandText,
         child: CustomScrollView(
           key: const ValueKey('fashion-feed'),
           physics: const AlwaysScrollableScrollPhysics(),
@@ -223,7 +223,7 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
               const SliverToBoxAdapter(
                 child: LinearProgressIndicator(
                   minHeight: 3,
-                  color: StyloristaColors.sandText,
+                  color: SeamlyColors.sandText,
                 ),
               ),
             SliverToBoxAdapter(
@@ -313,7 +313,7 @@ class _FeedHeader extends StatelessWidget {
               children: [
                 const CircleAvatar(
                   radius: 21,
-                  backgroundColor: StyloristaColors.sand,
+                  backgroundColor: SeamlyColors.sand,
                   child: Icon(Icons.newspaper_rounded, color: Colors.white),
                 ),
                 const SizedBox(width: 11),
@@ -419,7 +419,7 @@ class _PlatformDiscovery extends StatelessWidget {
                   label: Text(platform.$2),
                   onPressed: () => onOpen(platform.$1),
                   side: BorderSide(
-                    color: StyloristaColors.sand.withValues(alpha: 0.35),
+                    color: SeamlyColors.sand.withValues(alpha: 0.35),
                   ),
                 ),
             ],
@@ -469,7 +469,7 @@ class _CategoryStrip extends StatelessWidget {
             avatar: Icon(
               category.icon,
               size: 17,
-              color: isSelected ? Colors.white : StyloristaColors.sandText,
+              color: isSelected ? Colors.white : SeamlyColors.sandText,
             ),
             label: Text(category.label),
             selectedColor: const Color(0xFF513225),
@@ -709,7 +709,7 @@ class _FeedPostCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: StyloristaColors.sand.withValues(alpha: 0.16),
+                    color: SeamlyColors.sand.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -844,7 +844,7 @@ Color _platformColor(String platform) {
   if (platform.toLowerCase().contains('google')) {
     return const Color(0xFF4285F4);
   }
-  return StyloristaColors.sand;
+  return SeamlyColors.sand;
 }
 
 String _relativeTime(DateTime value) {

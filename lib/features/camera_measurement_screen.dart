@@ -5,8 +5,8 @@ import 'package:camera/camera.dart' as camera;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart' as picker;
 
-import '../services/stylorista_api.dart';
-import '../theme/stylorista_theme.dart';
+import '../services/seamly_api.dart';
+import '../theme/seamly_theme.dart';
 import '../widgets/common.dart';
 import 'camera_capture_view.dart';
 
@@ -20,15 +20,19 @@ class CameraMeasurementScreen extends StatefulWidget {
     required this.onMeasurementsReady,
     required this.onColorSeasonAnalyzed,
     required this.onOpenShop,
+    this.onOpenAccount,
+    this.avatarBase64,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final bool active;
   final double? referenceHeightCm;
   final VoidCallback onBack;
   final ValueChanged<Map<String, double>> onMeasurementsReady;
   final ValueChanged<String> onColorSeasonAnalyzed;
   final VoidCallback onOpenShop;
+  final VoidCallback? onOpenAccount;
+  final String? avatarBase64;
 
   @override
   State<CameraMeasurementScreen> createState() =>
@@ -56,6 +60,11 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
   int _cameraGeneration = 0;
   int _scanGeneration = 0;
   Future<void> _cameraQueue = Future<void>.value();
+  Timer? _previewTimer;
+  bool _previewInFlight = false;
+  bool _previewReady = false;
+  String? _previewGuidance;
+  List<double>? _previewBbox;
 
   bool get _busy => _capturing || _analyzing || _analyzingColor;
   bool _currentScan(int generation) =>
@@ -81,6 +90,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
       _capturing = false;
       _analyzing = false;
       _analyzingColor = false;
+      _stopPreviewLoop();
       unawaited(_disposeCamera());
       _instructionsAccepted = false;
       _preparationConfirmed = false;
@@ -90,19 +100,25 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
       _colorResult = null;
       _error = null;
       _colorError = null;
+      _previewReady = false;
+      _previewGuidance = null;
+      _previewBbox = null;
+    } else if (widget.active && _instructionsAccepted && _photoBytes == null) {
+      _startPreviewLoop();
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!widget.active) return;
-    if (state == AppLifecycleState.inactive) {
+if (state == AppLifecycleState.inactive) {
+      _stopPreviewLoop();
       unawaited(_disposeCamera());
-    } else if (state == AppLifecycleState.resumed &&
+} else if (state == AppLifecycleState.resumed &&
         _instructionsAccepted &&
         _photoBytes == null &&
         !_capturing) {
-      _startCamera();
+      unawaited(_startCamera());
     }
   }
 
@@ -110,6 +126,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _scanGeneration++;
+    _stopPreviewLoop();
     unawaited(_disposeCamera());
     super.dispose();
   }
@@ -127,6 +144,66 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
     final controller = _cameraController;
     _cameraController = null;
     return _queueCameraOperation(() async => controller?.dispose());
+  }
+
+  void _startPreviewLoop() {
+    if (_previewTimer != null || !mounted || !widget.active) return;
+    _previewTimer = Timer.periodic(
+      const Duration(milliseconds: 1500),
+      (_) => unawaited(_samplePreview()),
+    );
+    unawaited(_samplePreview());
+  }
+
+  void _stopPreviewLoop() {
+    _previewTimer?.cancel();
+    _previewTimer = null;
+    _previewInFlight = false;
+    _previewReady = false;
+    _previewGuidance = null;
+    _previewBbox = null;
+  }
+
+  Future<void> _samplePreview() async {
+    if (!mounted ||
+        !widget.active ||
+        !_instructionsAccepted ||
+        _photoBytes != null ||
+        _busy ||
+        _cameraStarting ||
+        _previewInFlight) {
+      return;
+    }
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) return;
+    final generation = _scanGeneration;
+    _previewInFlight = true;
+    try {
+      final file = await controller.takePicture();
+      final bytes = await file.readAsBytes();
+      if (!_currentScan(generation) || _photoBytes != null) return;
+      final result = await widget.api.previewBodyPhoto(imageBytes: bytes);
+      if (!_currentScan(generation) || _photoBytes != null) return;
+      final bbox = (result['bbox'] as List<dynamic>?)
+          ?.map((value) => (value as num).toDouble())
+          .toList();
+      setState(() {
+        _previewReady = result['ready'] == true;
+        _previewGuidance = result['guidance']?.toString();
+        _previewBbox = bbox;
+      });
+    } on Exception {
+      // Preview is best-effort; keep the last known state.
+    } finally {
+      _previewInFlight = false;
+      if (mounted &&
+          widget.active &&
+          _instructionsAccepted &&
+          _photoBytes == null &&
+          !_busy) {
+        _startPreviewLoop();
+      }
+    }
   }
 
   Future<void> _startCamera({camera.CameraLensDirection? lens}) {
@@ -180,6 +257,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
       final ready = pending;
       pending = null;
       setState(() => _cameraController = ready);
+      _startPreviewLoop();
     } on Exception {
       if (current()) {
         setState(
@@ -250,6 +328,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
 
   void _reviewInstructions() {
     _scanGeneration++;
+    _stopPreviewLoop();
     unawaited(_disposeCamera());
     setState(() {
       _instructionsAccepted = false;
@@ -275,7 +354,10 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
         setState(() => _error = 'The photo could not be captured. Try again.');
       }
     } finally {
-      if (_currentScan(generation)) setState(() => _capturing = false);
+      if (_currentScan(generation)) {
+        setState(() => _capturing = false);
+        _startPreviewLoop();
+      }
     }
   }
 
@@ -310,6 +392,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
   Future<void> _usePhoto(Uint8List bytes) async {
     if (!mounted || !widget.active) return;
     final generation = _scanGeneration;
+    _stopPreviewLoop();
     unawaited(_disposeCamera());
     setState(() {
       _photoBytes = bytes;
@@ -387,6 +470,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
   Future<void> _retake() async {
     if (_busy) return;
     _scanGeneration++;
+    _stopPreviewLoop();
     setState(() {
       _photoBytes = null;
       _result = null;
@@ -485,6 +569,9 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
               error: _error,
               colorResult: _colorResult,
               hasResults: _result != null || _colorResult != null,
+              previewReady: _previewReady,
+              previewGuidance: _previewGuidance,
+              previewBbox: _previewBbox,
               onBack: widget.onBack,
               onHelp: _reviewInstructions,
               onCapture: _capture,
@@ -495,7 +582,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
               onResults: _showResults,
             )
           : ColoredBox(
-              color: StyloristaColors.cream,
+              color: SeamlyColors.cream,
               child: SafeArea(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -591,7 +678,7 @@ class _ScanPreparationCard extends StatelessWidget {
             ),
             const SizedBox(height: 7),
             const Text(
-              'Follow these steps before opening the camera so FashionTech can estimate your measurements from a clear full-body photo.',
+              'Follow these steps before opening the camera so Seamly can estimate your measurements from a clear full-body photo.',
               style: TextStyle(height: 1.4),
             ),
             const SizedBox(height: 20),
@@ -623,7 +710,7 @@ class _ScanPreparationCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
-                color: StyloristaColors.sand.withValues(alpha: 0.12),
+                color: SeamlyColors.sand.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
@@ -712,10 +799,10 @@ class _PreparationStep extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: StyloristaColors.sand.withValues(alpha: 0.18),
+              color: SeamlyColors.sand.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(13),
             ),
-            child: Icon(icon, color: StyloristaColors.sandText),
+            child: Icon(icon, color: SeamlyColors.sandText),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -812,7 +899,7 @@ class _CameraColorResult extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.palette_rounded, color: StyloristaColors.plum),
+                const Icon(Icons.palette_rounded, color: SeamlyColors.plum),
                 const SizedBox(width: 9),
                 Expanded(
                   child: Text(
@@ -988,7 +1075,7 @@ class _MeasurementResults extends StatelessWidget {
                         width: width,
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: StyloristaColors.sand.withValues(alpha: 0.11),
+                          color: SeamlyColors.sand.withValues(alpha: 0.11),
                           borderRadius: BorderRadius.circular(13),
                         ),
                         child: Column(
@@ -1031,7 +1118,7 @@ class _MeasurementResults extends StatelessWidget {
                     const Icon(
                       Icons.info_outline,
                       size: 17,
-                      color: StyloristaColors.sandText,
+                      color: SeamlyColors.sandText,
                     ),
                     const SizedBox(width: 7),
                     Expanded(

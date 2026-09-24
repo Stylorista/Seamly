@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.stylorista" "\0"
-            VALUE "FileDescription", "FashionTech" "\0"
+            VALUE "CompanyName", "com.seamly" "\0"
+            VALUE "FileDescription", "Seamly" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "stylorista_ai" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.stylorista. All rights reserved." "\0"
-            VALUE "OriginalFilename", "stylorista_ai.exe" "\0"
-            VALUE "ProductName", "FashionTech" "\0"
+            VALUE "InternalName", "seamly" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.seamly. All rights reserved." "\0"
+            VALUE "OriginalFilename", "seamly.exe" "\0"
+            VALUE "ProductName", "Seamly" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

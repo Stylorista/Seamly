@@ -14,29 +14,30 @@ import 'features/season_style_screen.dart';
 import 'features/shop_screen.dart';
 import 'features/welcome_screen.dart';
 import 'services/session_store.dart';
-import 'services/stylorista_api.dart';
-import 'theme/stylorista_theme.dart';
+import 'services/seamly_api.dart';
+import 'theme/seamly_theme.dart';
+import 'widgets/seamly_header.dart';
 
-class StyloristaApp extends StatelessWidget {
-  const StyloristaApp({
+class SeamlyApp extends StatelessWidget {
+  const SeamlyApp({
     super.key,
     this.api,
     this.initiallyAuthenticated = false,
     this.sessionStore,
   });
 
-  final StyloristaApi? api;
+  final SeamlyApi? api;
   final bool initiallyAuthenticated;
   final SessionStore? sessionStore;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'FashionTech',
+      title: 'Seamly',
       debugShowCheckedModeBanner: false,
-      theme: buildStyloristaTheme(),
+      theme: buildSeamlyTheme(),
       home: AuthGate(
-        api: api ?? StyloristaApi(),
+        api: api ?? SeamlyApi(),
         initiallyAuthenticated: initiallyAuthenticated,
         sessionStore: sessionStore ?? PreferencesSessionStore(),
       ),
@@ -52,7 +53,7 @@ class AuthGate extends StatefulWidget {
     this.initiallyAuthenticated = false,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final SessionStore sessionStore;
   final bool initiallyAuthenticated;
 
@@ -259,7 +260,7 @@ class _AuthGateState extends State<AuthGate> {
               key: const ValueKey('welcome-screen'),
               onContinue: _completeWelcome,
             )
-          : StyloristaShell(
+          : SeamlyShell(
               key: const ValueKey('app-shell'),
               api: widget.api,
               sessionStore: widget.sessionStore,
@@ -312,9 +313,9 @@ class _SessionLoadingScreen extends StatelessWidget {
               ),
               child: Image.asset(
                 key: const ValueKey('launch-logo'),
-                'assets/images/fashiontech_logo.png',
+                'assets/images/seamly_logo.png',
                 fit: BoxFit.contain,
-                semanticLabel: 'FashionTech logo',
+                semanticLabel: 'Seamly logo',
               ),
             ),
           ],
@@ -324,8 +325,8 @@ class _SessionLoadingScreen extends StatelessWidget {
   }
 }
 
-class StyloristaShell extends StatefulWidget {
-  const StyloristaShell({
+class SeamlyShell extends StatefulWidget {
+  const SeamlyShell({
     super.key,
     required this.api,
     required this.sessionStore,
@@ -338,7 +339,7 @@ class StyloristaShell extends StatefulWidget {
     this.onLogout,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final SessionStore sessionStore;
   final String? accountToken;
   final double? referenceHeightCm;
@@ -349,10 +350,10 @@ class StyloristaShell extends StatefulWidget {
   final Future<bool> Function()? onLogout;
 
   @override
-  State<StyloristaShell> createState() => _StyloristaShellState();
+  State<SeamlyShell> createState() => _SeamlyShellState();
 }
 
-class _StyloristaShellState extends State<StyloristaShell> {
+class _SeamlyShellState extends State<SeamlyShell> {
   int _selectedIndex = 0;
   late String? _sizeLabel = widget.initialSizeLabel;
   String? _colorSeason;
@@ -360,7 +361,7 @@ class _StyloristaShellState extends State<StyloristaShell> {
   int _scanRevision = 0;
 
   @override
-  void didUpdateWidget(covariant StyloristaShell oldWidget) {
+  void didUpdateWidget(covariant SeamlyShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.referenceHeightCm != widget.referenceHeightCm ||
         oldWidget.initialMeasurements != widget.initialMeasurements ||
@@ -447,6 +448,7 @@ class _StyloristaShellState extends State<StyloristaShell> {
     final screens = [
       HomeScreen(
         api: widget.api,
+        showHeader: false,
         onSelectFeature: _selectPage,
         sizeLabel: _sizeLabel,
         colorSeason: _colorSeason,
@@ -470,10 +472,14 @@ class _StyloristaShellState extends State<StyloristaShell> {
         onMeasurementsReady: _saveScanMeasurements,
         onColorSeasonAnalyzed: (value) => setState(() => _colorSeason = value),
         onOpenShop: () => _selectPage(1),
+        onOpenAccount: _openAccount,
+        avatarBase64: widget.account?.avatarBase64,
       ),
       FashionNewsScreen(api: widget.api, active: _selectedIndex == 3),
       ProfileScreen(
         api: widget.api,
+        showHeader: false,
+        avatarBase64: widget.account?.avatarBase64,
         sizeLabel: _sizeLabel,
         colorSeason: _colorSeason,
         onOpenFit: () => _selectPage(2),
@@ -509,13 +515,13 @@ class _StyloristaShellState extends State<StyloristaShell> {
               if (index == 0 || index == 2)
                 screens[index]
               else
-                SafeArea(child: screens[index]),
+                SafeArea(top: false, child: screens[index]),
           ],
         );
         return Scaffold(
           extendBody: false,
           resizeToAvoidBottomInset: true,
-          backgroundColor: StyloristaColors.cream,
+          backgroundColor: SeamlyColors.cream,
           body: Row(
             children: [
               if (wide && _selectedIndex != 2)
@@ -525,7 +531,19 @@ class _StyloristaShellState extends State<StyloristaShell> {
                 )
               else
                 const SizedBox.shrink(),
-              Expanded(child: content),
+              Expanded(
+                child: Column(
+                  children: [
+                    if (_selectedIndex != 2)
+                      SeamlyHeader(
+                        onOpenAccount: _openAccount,
+                        avatarBase64: widget.account?.avatarBase64,
+                        onBack: _selectedIndex > 4 ? () => _selectPage(4) : null,
+                      ),
+                    Expanded(child: content),
+                  ],
+                ),
+              ),
             ],
           ),
           bottomNavigationBar: wide || _selectedIndex == 2
@@ -638,7 +656,7 @@ class _BottomNavigation extends StatelessWidget {
                 child: Material(
                   key: const ValueKey('home-nav-Scan'),
                   color: selectedIndex == 2
-                      ? StyloristaColors.sand
+                      ? SeamlyColors.sand
                       : Colors.white,
                   elevation: 12,
                   shadowColor: Colors.black38,
@@ -654,7 +672,7 @@ class _BottomNavigation extends StatelessWidget {
                         size: 43,
                         color: selectedIndex == 2
                             ? Colors.white
-                            : StyloristaColors.ink,
+                            : SeamlyColors.ink,
                       ),
                     ),
                   ),
@@ -703,7 +721,7 @@ class _BottomNavigationItem extends StatelessWidget {
                 height: 44,
                 decoration: BoxDecoration(
                   color: selected
-                      ? StyloristaColors.sand.withValues(alpha: 0.18)
+                      ? SeamlyColors.sand.withValues(alpha: 0.18)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -714,7 +732,7 @@ class _BottomNavigationItem extends StatelessWidget {
                     icon,
                     size: 30,
                     color: selected
-                        ? StyloristaColors.sandText
+                        ? SeamlyColors.sandText
                         : Colors.black.withValues(alpha: 0.66),
                   ),
                 ),
@@ -740,7 +758,7 @@ class _DesktopNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 240,
-      color: StyloristaColors.ink,
+      color: SeamlyColors.ink,
       padding: const EdgeInsets.fromLTRB(18, 28, 18, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -787,7 +805,7 @@ class _DesktopNavigation extends StatelessWidget {
           ),
           const Spacer(),
           Text(
-            'Private by design\nPrototype · v0.1',
+            'Your fit. Your style.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Colors.white.withValues(alpha: 0.58),
               height: 1.5,
@@ -858,16 +876,16 @@ class _BrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = light ? Colors.white : StyloristaColors.ink;
+    final color = light ? Colors.white : SeamlyColors.ink;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Image.asset(
-          'assets/images/fashiontech_logo.png',
+          'assets/images/seamly_logo.png',
           width: 58,
           height: 58,
           fit: BoxFit.contain,
-          semanticLabel: 'FashionTech logo',
+          semanticLabel: 'Seamly logo',
         ),
         const SizedBox(width: 10),
         Flexible(
@@ -885,7 +903,7 @@ class _BrandMark extends StatelessWidget {
                 TextSpan(
                   text: 'Tech',
                   style: TextStyle(
-                    color: StyloristaColors.berry,
+                    color: SeamlyColors.berry,
                     fontWeight: FontWeight.w800,
                     fontSize: 18,
                   ),

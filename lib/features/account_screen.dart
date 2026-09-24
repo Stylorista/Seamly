@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/session_store.dart';
-import '../services/stylorista_api.dart';
+import '../services/seamly_api.dart';
 import '../widgets/account_avatar.dart';
+import '../widgets/seamly_header.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({
@@ -16,7 +17,7 @@ class AccountScreen extends StatefulWidget {
     required this.onLogout,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final AccountSession account;
   final Future<void> Function(AccountSession) onSaved;
   // Returns whether the remote session was successfully revoked.
@@ -188,7 +189,12 @@ class _AccountScreenState extends State<AccountScreen> {
     return PopScope(
       canPop: !_busy,
       child: Scaffold(
-        appBar: AppBar(title: const Text('My account')),
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(68),
+          child: SeamlyHeader(
+            onBack: _busy ? null : () => Navigator.of(context).pop(),
+          ),
+        ),
         body: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
@@ -200,6 +206,9 @@ class _AccountScreenState extends State<AccountScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const Text('My account',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 20),
                       Center(
                         child: AccountAvatar(base64Photo: _avatar, radius: 56),
                       ),

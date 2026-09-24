@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../widgets/seamly_header.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../services/stylorista_api.dart';
-import '../theme/stylorista_theme.dart';
+import '../services/seamly_api.dart';
+import '../theme/seamly_theme.dart';
 import '../widgets/common.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -18,9 +19,11 @@ class ProfileScreen extends StatefulWidget {
     required this.onOpenColorAnalysis,
     required this.onColorSeasonAnalyzed,
     this.onOpenAccount,
+    this.showHeader = true,
+    this.avatarBase64,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final String? sizeLabel;
   final String? colorSeason;
   final VoidCallback onOpenFit;
@@ -28,6 +31,8 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback onOpenColorAnalysis;
   final ValueChanged<String> onColorSeasonAnalyzed;
   final VoidCallback? onOpenAccount;
+  final bool showHeader;
+  final String? avatarBase64;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -85,13 +90,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: StyloristaColors.sand,
+      color: SeamlyColors.cream,
       child: CustomScrollView(
         key: const ValueKey('profile-hub'),
         slivers: [
-          SliverToBoxAdapter(
-            child: _ProfileHeader(onOpenAccount: widget.onOpenAccount),
-          ),
+          if (widget.showHeader)
+            SliverToBoxAdapter(
+              child: SeamlyHeader(
+                onOpenAccount: widget.onOpenAccount,
+                avatarBase64: widget.avatarBase64,
+              ),
+            ),
           SliverToBoxAdapter(
             child: Container(
               constraints: BoxConstraints(
@@ -166,13 +175,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         LayoutBuilder(
                           builder: (context, constraints) {
                             final desktop = constraints.maxWidth >= 650;
+                            final narrow = constraints.maxWidth < 300 ||
+                                MediaQuery.textScalerOf(context).scale(16) > 24;
                             return GridView.count(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
-                              crossAxisCount: desktop ? 4 : 2,
+                              crossAxisCount: narrow ? 1 : desktop ? 4 : 2,
                               crossAxisSpacing: desktop ? 20 : 30,
                               mainAxisSpacing: 22,
-                              childAspectRatio: desktop ? 0.66 : 0.61,
+                              childAspectRatio: narrow ? 0.95 : desktop ? 0.66 : 0.61,
                               children: [
                                 _ProfileFeatureCard(
                                   key: const ValueKey('profile-fit'),
@@ -260,59 +271,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({this.onOpenAccount});
-
-  final VoidCallback? onOpenAccount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(23, 18, 23, 30),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'FashionTech',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'serif',
-                    fontSize: 23,
-                  ),
-                ),
-              ),
-              if (onOpenAccount != null)
-                IconButton(
-                  tooltip: 'My account',
-                  onPressed: onOpenAccount,
-                  icon: const Icon(
-                    Icons.manage_accounts_outlined,
-                    color: Colors.white,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          const Center(
-            child: Text(
-              'Curated for you!',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ProfileFeatureCard extends StatelessWidget {
   const _ProfileFeatureCard({
     super.key,
@@ -362,7 +320,7 @@ class _ProfileFeatureCard extends StatelessWidget {
                         ),
                         child: Icon(
                           badgeIcon,
-                          color: StyloristaColors.sandText,
+                          color: SeamlyColors.sandText,
                           size: 27,
                         ),
                       ),
@@ -498,7 +456,7 @@ class _PhotoConsentSheetState extends State<_PhotoConsentSheet> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Use a clear portrait in indirect daylight. The photo is sent to your configured FashionTech API, analyzed in memory, and not stored.',
+              'Use a clear portrait in indirect daylight. The photo is sent to your configured Seamly API, analyzed in memory, and not stored.',
               style: TextStyle(height: 1.4, color: Colors.black54),
             ),
             const SizedBox(height: 12),
@@ -590,7 +548,7 @@ class _AccessoryResult extends StatelessWidget {
               children: [
                 const Icon(
                   Icons.auto_awesome_rounded,
-                  color: StyloristaColors.sandText,
+                  color: SeamlyColors.sandText,
                 ),
                 const SizedBox(width: 9),
                 Expanded(

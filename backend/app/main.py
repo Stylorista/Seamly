@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from .ai_engine import StyloristaEngine
+from .ai_engine import SeamlyEngine
 from .account_store import (
     AccountExistsError,
     InvalidCredentialsError,
@@ -22,6 +23,8 @@ from .schemas import (
     AccountProfile,
     AccountProfileUpdateRequest,
     AccountRegisterRequest,
+    BodyScanPreviewRequest,
+    BodyScanPreviewResponse,
     BodyScanRequest,
     BodyScanResponse,
     AppearanceAnalysisRequest,
@@ -42,21 +45,27 @@ from .shop_catalog import ShopCatalogService
 
 
 app = FastAPI(
-    title="FashionTech API",
+    title="Seamly API",
     description="Privacy-first fashion fit, personal color and seasonal styling MVP.",
     version="1.7.0",
 )
 
+configured_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+] or ["https://stylorista-ai.jadesalvador3257.chatgpt.site"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://stylorista-ai.jadesalvador3257.chatgpt.site"],
+    allow_origins=configured_origins,
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
-engine = StyloristaEngine()
+engine = SeamlyEngine()
 body_scan_estimator = BodyScanEstimator()
 appearance_analyzer = AppearanceAnalyzer()
 fashion_news_service = FashionNewsService()
@@ -67,7 +76,7 @@ account_store = create_account_store()
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "fashiontech", "version": app.version}
+    return {"status": "ok", "service": "seamly", "version": app.version}
 
 
 def _bearer_token(authorization: str | None) -> str:
@@ -213,6 +222,11 @@ async def home_weather(
 @app.post("/v1/size/recommend", response_model=SizeResponse)
 def recommend_size(request: SizeRequest) -> SizeResponse:
     return engine.recommend_size(request)
+
+
+@app.post("/v1/body-scan/preview", response_model=BodyScanPreviewResponse)
+def preview_body_scan(request: BodyScanPreviewRequest) -> BodyScanPreviewResponse:
+    return body_scan_estimator.preview(request)
 
 
 @app.post("/v1/body-scan/analyze", response_model=BodyScanResponse)

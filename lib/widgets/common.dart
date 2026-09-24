@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/stylorista_theme.dart';
+import '../theme/seamly_theme.dart';
 
 class PageIntro extends StatelessWidget {
   const PageIntro({
@@ -22,7 +22,7 @@ class PageIntro extends StatelessWidget {
         Text(
           eyebrow.toUpperCase(),
           style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: StyloristaColors.plum,
+            color: SeamlyColors.plum,
             letterSpacing: 1.3,
           ),
         ),
@@ -55,7 +55,7 @@ class NoticeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = color ?? StyloristaColors.moss;
+    final accent = color ?? SeamlyColors.moss;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(

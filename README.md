@@ -1,6 +1,6 @@
-# FashionTech
+# Seamly
 
-FashionTech is a privacy-conscious fashion styling MVP built with Flutter and FastAPI. It combines:
+Seamly is a privacy-conscious fashion styling MVP built with Flutter and FastAPI. It combines:
 
 - database-backed registration, hashed passwords, 30-day session tokens, and a one-time welcome screen;
 - a header account button for editing your name, height in centimetres, and private profile picture, plus current-session logout;
@@ -58,19 +58,19 @@ Home weather uses Open-Meteo city search and its current/two-day forecast. Manil
 
 ### Account database
 
-For local use, the API creates `backend/data/stylorista.db` automatically. For an online Render deployment, create a Render PostgreSQL database and set the web service's `DATABASE_URL` environment variable to its internal connection string. The app will switch to PostgreSQL automatically. Render's free PostgreSQL databases currently expire after 30 days, so use a paid database or another durable PostgreSQL provider before real users rely on the service.
+For local use, the API creates `backend/data/seamly.db` automatically. For an online Render deployment, create a Render PostgreSQL database and set the web service's `DATABASE_URL` environment variable to its internal connection string. The app will switch to PostgreSQL automatically. Render's free PostgreSQL databases currently expire after 30 days, so use a paid database or another durable PostgreSQL provider before real users rely on the service.
 
 The shop never assigns a generic photo to a product. Exact product photos,
 titles, sellers, and links are accepted only from a backend-configured approved
 seller or affiliate feed, and the backend rejects records whose listing and
 image hosts do not match the named marketplace. When no approved feed is
-connected, FashionTech shows image-free search suggestions instead of fake
+connected, Seamly shows image-free search suggestions instead of fake
 listings. See [the shop source contract](docs/SHOP_SOURCES.md) for the normalized
 feed format and marketplace onboarding boundary.
 
 ## Use the online app
 
-Open [FashionTech online](https://stylorista-ai.jadesalvador3257.chatgpt.site) in a current browser.
+Open [Seamly online](https://stylorista-ai.jadesalvador3257.chatgpt.site) in a current browser.
 
 On iPhone, open the link in Safari, tap **Share**, then choose **Add to Home Screen**. This installs the web app icon and launches it in a standalone app window. A native App Store/TestFlight release still requires Apple Developer signing and a macOS/Xcode build.
 
@@ -108,4 +108,4 @@ The camera estimator needs a known height because an ordinary single photo has n
 
 ## Important naming note
 
-`FashionTech` is a working product name, not a cleared trademark. Obtain professional trademark, company-registry, app-store, social-handle, and domain clearance before public launch.
+`Seamly` is a working product name, not a cleared trademark. Obtain professional trademark, company-registry, app-store, social-handle, and domain clearance before public launch.

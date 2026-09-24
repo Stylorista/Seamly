@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../theme/stylorista_theme.dart';
+import '../theme/seamly_theme.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key, required this.onContinue});
@@ -12,7 +12,7 @@ class WelcomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: StyloristaColors.sand,
+      backgroundColor: SeamlyColors.sand,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final panelHeight = math.max(300.0, constraints.maxHeight * 0.36);
@@ -33,7 +33,7 @@ class WelcomeScreen extends StatelessWidget {
                 height: panelHeight,
                 child: Container(
                   decoration: const BoxDecoration(
-                    color: StyloristaColors.sand,
+                    color: SeamlyColors.sand,
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(28),
                     ),
@@ -134,15 +134,15 @@ class _WelcomeBrand extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Image.asset(
-            'assets/images/fashiontech_logo.png',
+            'assets/images/seamly_logo.png',
             width: 104,
             height: 104,
             fit: BoxFit.contain,
-            semanticLabel: 'FashionTech logo',
+            semanticLabel: 'Seamly logo',
           ),
           const SizedBox(width: 12),
           const Text(
-            'FashionTech',
+            'Seamly',
             style: TextStyle(
               color: Colors.white,
               fontFamily: 'Georgia',

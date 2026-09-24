@@ -1,0 +1,37 @@
+# Fly.io configuration for the Seamly backend.
+# If the app name below is taken, change it or omit the line and run:
+#   fly apps create <your-unique-name>
+app = "seamly-backend"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Core settings for fly.toml (docs: https://fly.io/docs/reference/configuration/)
+# The backend only listens on the internal port below.
+[experimental]
+  allowed_public_ports = ["80", "443"]
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  processes = ["app"]
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = "80"
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = "443"
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 500
+
+  [[services.http_checks]]
+    grace_period = "60s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"

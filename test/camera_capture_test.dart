@@ -7,9 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
-import 'package:stylorista_ai/features/camera_capture_view.dart';
-import 'package:stylorista_ai/features/camera_measurement_screen.dart';
-import 'package:stylorista_ai/services/stylorista_api.dart';
+import 'package:seamly/features/camera_capture_view.dart';
+import 'package:seamly/features/camera_measurement_screen.dart';
+import 'package:seamly/services/seamly_api.dart';
 
 final _photo = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7l8AAAAASUVORK5CYII=',
@@ -73,7 +73,14 @@ void main() {
               padding: const EdgeInsets.only(top: 44, bottom: 24),
               textScaler: const TextScaler.linear(1.6),
             ),
-            child: Scaffold(body: _view(controller: controller)),
+            child: Scaffold(
+              body: _view(
+                controller: controller,
+                previewReady: true,
+                previewGuidance: 'Ready — hold still and take the photo.',
+                previewBbox: const [0.3, 0.08, 0.4, 0.84],
+              ),
+            ),
           ),
         ),
       );
@@ -93,6 +100,10 @@ void main() {
       );
       expect(shutter.top, greaterThanOrEqualTo(44));
       expect(shutter.bottom, lessThanOrEqualTo(size.height - 24));
+      expect(
+        find.text('Ready — hold still and take the photo.'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -358,6 +369,9 @@ CameraCaptureView _view({
   Map<String, dynamic>? colorResult,
   bool hasResults = false,
   String? error,
+  bool previewReady = false,
+  String? previewGuidance,
+  List<double>? previewBbox,
 }) => CameraCaptureView(
   controller: controller,
   starting: false,
@@ -367,6 +381,9 @@ CameraCaptureView _view({
   error: error,
   colorResult: colorResult,
   hasResults: hasResults,
+  previewReady: previewReady,
+  previewGuidance: previewGuidance,
+  previewBbox: previewBbox,
   onBack: () {},
   onHelp: () {},
   onCapture: () {},
@@ -465,11 +482,26 @@ class _DelayedCameraPlatform extends _NoCameraPlatform {
   Widget buildPreview(int cameraId) => const ColoredBox(color: Colors.blueGrey);
 }
 
-class _ScanApi extends StyloristaApi {
+class _ScanApi extends SeamlyApi {
   final body = Completer<Map<String, dynamic>>();
   final color = Completer<Map<String, dynamic>>();
   int bodyCalls = 0;
   int colorCalls = 0;
+  int previewCalls = 0;
+  @override
+  Future<Map<String, dynamic>> previewBodyPhoto({
+    required Uint8List imageBytes,
+  }) {
+    previewCalls++;
+    return Future.value({
+      'ready': false,
+      'person_detected': false,
+      'person_confidence': 0.0,
+      'guidance': 'Stand fully visible in the frame.',
+      'bbox': null,
+    });
+  }
+
   @override
   Future<Map<String, dynamic>> analyzeBodyPhoto({
     required Uint8List imageBytes,

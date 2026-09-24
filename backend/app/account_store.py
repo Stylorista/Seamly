@@ -39,7 +39,7 @@ class AccountStore:
     def __init__(self, database_path: str | Path | None = None) -> None:
         configured = str(database_path or os.getenv("STYLORISTA_DB_PATH", "")).strip()
         self._path = Path(configured) if configured else (
-            Path(__file__).resolve().parents[1] / "data" / "stylorista.db"
+            Path(__file__).resolve().parents[1] / "data" / "seamly.db"
         )
         self._schema_ready = False
         self._schema_lock = Lock()

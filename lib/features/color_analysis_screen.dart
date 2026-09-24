@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../services/stylorista_api.dart';
-import '../theme/stylorista_theme.dart';
+import '../services/seamly_api.dart';
+import '../theme/seamly_theme.dart';
 import '../widgets/common.dart';
 
 class ColorAnalysisScreen extends StatefulWidget {
@@ -11,7 +11,7 @@ class ColorAnalysisScreen extends StatefulWidget {
     required this.onSeasonAnalyzed,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final ValueChanged<String> onSeasonAnalyzed;
 
   @override
@@ -93,7 +93,7 @@ class _ColorAnalysisScreenState extends State<ColorAnalysisScreen> {
                 icon: Icons.light_mode_outlined,
                 text:
                     'For a steadier result, compare your skin at the jaw or neck, use your natural root color, and remove colored contact lenses.',
-                color: StyloristaColors.gold,
+                color: SeamlyColors.gold,
               ),
               const SizedBox(height: 20),
               Card(
@@ -205,13 +205,13 @@ class _SwatchSelector extends StatelessWidget {
                   padding: const EdgeInsets.all(9),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? StyloristaColors.plum.withValues(alpha: 0.08)
+                        ? SeamlyColors.plum.withValues(alpha: 0.08)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(15),
                     border: Border.all(
                       color: isSelected
-                          ? StyloristaColors.plum
-                          : StyloristaColors.ink.withValues(alpha: 0.11),
+                          ? SeamlyColors.plum
+                          : SeamlyColors.ink.withValues(alpha: 0.11),
                       width: isSelected ? 2 : 1,
                     ),
                   ),
@@ -267,7 +267,7 @@ class _ColorResult extends StatelessWidget {
             Text(
               'YOUR COLOR DIRECTION',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: StyloristaColors.plum,
+                color: SeamlyColors.plum,
                 letterSpacing: 1.4,
               ),
             ),

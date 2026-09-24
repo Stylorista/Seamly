@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../services/stylorista_api.dart';
-import '../theme/stylorista_theme.dart';
+import '../services/seamly_api.dart';
+import '../theme/seamly_theme.dart';
 
 class ShopScreen extends StatefulWidget {
   const ShopScreen({
@@ -15,7 +15,7 @@ class ShopScreen extends StatefulWidget {
     required this.onOpenMeasurements,
   });
 
-  final StyloristaApi api;
+  final SeamlyApi api;
   final Map<String, double>? measurements;
   final String? sizeLabel;
   final String? colorSeason;
@@ -292,14 +292,14 @@ class _ShopScreenState extends State<ShopScreen> {
                     label: Text(category),
                     selected: selected,
                     onSelected: (_) => setState(() => _category = category),
-                    selectedColor: StyloristaColors.sand,
+                    selectedColor: SeamlyColors.sand,
                     checkmarkColor: Colors.white,
                     labelStyle: TextStyle(
-                      color: selected ? Colors.white : StyloristaColors.ink,
+                      color: selected ? Colors.white : SeamlyColors.ink,
                       fontWeight: FontWeight.w700,
                     ),
                     side: BorderSide(
-                      color: StyloristaColors.sand.withValues(alpha: 0.35),
+                      color: SeamlyColors.sand.withValues(alpha: 0.35),
                     ),
                   );
                 },
@@ -423,7 +423,7 @@ class _ShopScreenState extends State<ShopScreen> {
               child: Text(
                 _disclosure.isNotEmpty
                     ? '$_disclosure Always confirm the seller’s price, stock, return policy, and size chart.'
-                    : 'Product photos appear only when FashionTech receives the exact image and listing link from an approved source feed. Search cards contain no borrowed product photos.',
+                    : 'Product photos appear only when Seamly receives the exact image and listing link from an approved source feed. Search cards contain no borrowed product photos.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.black54,
@@ -447,19 +447,19 @@ class _ShopHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: StyloristaColors.sand,
+      color: SeamlyColors.cream,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
       child: Column(
         children: [
           const Row(
             children: [
-              Icon(Icons.shopping_bag_rounded, color: Colors.white, size: 28),
+              Icon(Icons.shopping_bag_rounded, color: SeamlyColors.plum, size: 28),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'FashionTech Shop',
+                  'Shop',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: SeamlyColors.ink,
                     fontSize: 25,
                     fontWeight: FontWeight.w800,
                   ),
@@ -473,9 +473,9 @@ class _ShopHeader extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   child: Text(
-                    'SOURCE-LINKED',
+                    'FROM THE SOURCE',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: SeamlyColors.plum,
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.5,
@@ -554,7 +554,7 @@ class _AiFitBanner extends StatelessWidget {
                   hasProfile
                       ? Icons.auto_awesome_rounded
                       : Icons.photo_camera_rounded,
-                  color: StyloristaColors.sandText,
+                  color: SeamlyColors.sandText,
                 ),
               ),
               const SizedBox(width: 13),
@@ -576,7 +576,7 @@ class _AiFitBanner extends StatelessWidget {
                     Text(
                       hasProfile
                           ? 'Suggested size $size  •  ${colorSeason ?? 'Color profile not set'}\n$profileDetails\nExact listings rank higher when their source data includes your size and palette.'
-                          : 'Add a body profile so FashionTech can rank source-linked listings for your proportions and palette.',
+                          : 'Add a body profile so Seamly can rank source-linked listings for your proportions and palette.',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12.5,
@@ -910,7 +910,7 @@ class _SearchIdeaCard extends StatelessWidget {
               color: const Color(0xFFF0E7DE),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(item.icon, color: StyloristaColors.sandText, size: 28),
+            child: Icon(item.icon, color: SeamlyColors.sandText, size: 28),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1131,7 +1131,7 @@ class _CatalogSetupNotice extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'FashionTech will not fill this space with unrelated photos. Exact product images, titles, and links appear after a seller or affiliate feed is connected.',
+                  'Seamly will not fill this space with unrelated photos. Exact product images, titles, and links appear after a seller or affiliate feed is connected.',
                   style: TextStyle(fontSize: 12, height: 1.35),
                 ),
               ],

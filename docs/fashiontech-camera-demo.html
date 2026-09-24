@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Seamly camera AI demonstration</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 0%, #5b3a2d, #1c1412 58%, #100d0c); color: #fff7f0; }
+    main { width: min(100%, 520px); }
+    .panel { border: 1px solid rgba(255,255,255,.16); border-radius: 24px; padding: 18px; background: rgba(35, 22, 18, .88); box-shadow: 0 28px 90px rgba(0,0,0,.38); }
+    h1 { margin: 0 0 7px; font-size: 22px; letter-spacing: -.02em; }
+    p { margin: 0 0 16px; color: #dfcfc5; line-height: 1.45; font-size: 14px; }
+    canvas { display: block; width: min(100%, 360px); height: auto; aspect-ratio: 9 / 16; margin: 0 auto 16px; border-radius: 18px; background: #15110f; box-shadow: 0 14px 44px rgba(0,0,0,.45); }
+    button { width: 100%; border: 0; border-radius: 999px; padding: 14px 18px; color: #22120c; background: #f5b777; font: 700 15px inherit; cursor: pointer; }
+    button:disabled { opacity: .65; cursor: wait; }
+    #status { min-height: 22px; margin-top: 12px; color: #f5c9a0; text-align: center; font-size: 13px; }
+    .fine { margin-top: 12px; color: #b9a69a; font-size: 11px; text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <h1>Seamly camera AI demo</h1>
+      <p>Render a short portrait walkthrough of the current camera prototype: guided lighting, full-body framing, measurement estimation, color analysis, and fit guidance.</p>
+      <canvas id="demo" width="720" height="1280" aria-label="Seamly camera demonstration preview"></canvas>
+      <button id="render" type="button">Render &amp; download video</button>
+      <div id="status" role="status">Ready — press the button to create the WebM demo.</div>
+      <div class="fine">Prototype explanation only. Results depend on lighting, pose, camera quality, and the saved height reference.</div>
+    </section>
+  </main>
+  <script>
+    const canvas = document.getElementById('demo');
+    const ctx = canvas.getContext('2d');
+    const renderButton = document.getElementById('render');
+    const statusLine = document.getElementById('status');
+    const W = canvas.width;
+    const H = canvas.height;
+    const logo = new Image();
+    logo.src = '/assets/images/seamly_logo.png';
+
+    const palette = {
+      cream: '#fff8f1',
+      ink: '#1e1714',
+      brown: '#56372c',
+      peach: '#f5b777',
+      coral: '#e98f78',
+      plum: '#8a3869',
+      mist: '#ead6c4',
+      green: '#8ec7a1'
+    };
+    const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+    const ease = (v) => { v = clamp(v); return v * v * (3 - 2 * v); };
+    const rounded = (x, y, w, h, r, fill, stroke, line = 1) => {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.lineWidth = line; ctx.strokeStyle = stroke; ctx.stroke(); }
+    };
+    const text = (value, x, y, size, color = palette.cream, weight = 500, align = 'left') => {
+      ctx.font = `${weight} ${size}px Inter, ui-sans-serif, system-ui, sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(value, x, y);
+    };
+    const wrap = (value, x, y, maxWidth, size, color, weight = 500, gap = 28) => {
+      const words = value.split(' ');
+      let line = '';
+      let row = 0;
+      ctx.font = `${weight} ${size}px Inter, ui-sans-serif, system-ui, sans-serif`;
+      for (const word of words) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (ctx.measureText(candidate).width > maxWidth && line) {
+          text(line, x, y + row * gap, size, color, weight);
+          line = word; row++;
+        } else line = candidate;
+      }
+      if (line) text(line, x, y + row * gap, size, color, weight);
+      return row + 1;
+    };
+    const fade = (amount) => { ctx.fillStyle = `rgba(11, 8, 7, ${clamp(amount)})`; ctx.fillRect(0, 0, W, H); };
+    const drawLogo = (x, y, size, alpha = 1, glow = false) => {
+      if (!logo.complete || !logo.naturalWidth) return;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      if (glow) { ctx.shadowColor = palette.peach; ctx.shadowBlur = 48; }
+      ctx.drawImage(logo, x - size / 2, y - size / 2, size, size);
+      ctx.restore();
+    };
+    const drawGrid = (alpha = .23) => {
+      ctx.save(); ctx.strokeStyle = `rgba(255,248,241,${alpha})`; ctx.lineWidth = 1;
+      for (const x of [W / 3, W * 2 / 3]) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (const y of [H / 3, H * 2 / 3]) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.restore();
+    };
+    const drawPerson = (cx, top, scale, alpha = 1) => {
+      ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = 'rgba(244, 210, 181, .83)'; ctx.strokeStyle = 'rgba(255,248,241,.9)'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(cx, top + 44 * scale, 34 * scale, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(cx - 67 * scale, top + 88 * scale, 134 * scale, 230 * scale, 52 * scale); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(cx - 45 * scale, top + 302 * scale); ctx.lineTo(cx - 42 * scale, top + 540 * scale); ctx.lineTo(cx - 7 * scale, top + 540 * scale); ctx.lineTo(cx, top + 328 * scale); ctx.lineTo(cx + 7 * scale, top + 540 * scale); ctx.lineTo(cx + 42 * scale, top + 540 * scale); ctx.lineTo(cx + 45 * scale, top + 302 * scale); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 67 * scale, top + 112 * scale); ctx.lineTo(cx - 112 * scale, top + 296 * scale); ctx.lineTo(cx - 87 * scale, top + 305 * scale); ctx.lineTo(cx - 28 * scale, top + 186 * scale); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + 67 * scale, top + 112 * scale); ctx.lineTo(cx + 112 * scale, top + 296 * scale); ctx.lineTo(cx + 87 * scale, top + 305 * scale); ctx.lineTo(cx + 28 * scale, top + 186 * scale); ctx.stroke();
+      ctx.restore();
+    };
+    const drawMeasure = (cx, y, label, width, progress = 1) => {
+      ctx.save(); ctx.strokeStyle = palette.peach; ctx.fillStyle = palette.peach; ctx.lineWidth = 4; ctx.setLineDash([10, 8]);
+      ctx.beginPath(); ctx.moveTo(cx - width / 2, y); ctx.lineTo(cx + width / 2, y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(cx - width / 2, y - 11); ctx.lineTo(cx - width / 2, y + 11); ctx.moveTo(cx + width / 2, y - 11); ctx.lineTo(cx + width / 2, y + 11); ctx.stroke();
+      rounded(cx + width / 2 + 18, y - 21, 144, 42, 21, 'rgba(245,183,119,.92)');
+      text(label, cx + width / 2 + 90, y, 18, palette.ink, 800, 'center');
+      ctx.restore();
+    };
+    const drawTop = (label, step) => {
+      ctx.fillStyle = 'rgba(11, 8, 7, .34)'; ctx.fillRect(0, 0, W, 118);
+      drawLogo(54, 59, 72, 1, false);
+      text('SEAMLY', 104, 45, 20, palette.cream, 800);
+      text(label, 104, 77, 15, 'rgba(255,248,241,.7)', 500);
+      text(`${step}/4`, W - 42, 58, 18, palette.peach, 800, 'right');
+    };
+    const drawStepRail = (active) => {
+      const labels = ['FRAME', 'SCAN', 'COLOR', 'FIT'];
+      const left = 54, top = H - 126, gap = 156;
+      for (let i = 0; i < labels.length; i++) {
+        const x = left + i * gap;
+        ctx.fillStyle = i <= active ? palette.peach : 'rgba(255,248,241,.26)';
+        ctx.beginPath(); ctx.arc(x, top, 8, 0, Math.PI * 2); ctx.fill();
+        if (i < labels.length - 1) { ctx.fillStyle = i < active ? palette.peach : 'rgba(255,248,241,.18)'; ctx.fillRect(x + 12, top - 2, gap - 24, 4); }
+        text(labels[i], x, top + 28, 13, i <= active ? palette.cream : 'rgba(255,248,241,.48)', 700, 'center');
+      }
+    };
+    const drawCamera = (time, phase) => {
+      const bg = ctx.createLinearGradient(0, 118, 0, H);
+      bg.addColorStop(0, '#785443'); bg.addColorStop(.52, '#4a332b'); bg.addColorStop(1, '#1b1513');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      drawGrid(.18);
+      ctx.fillStyle = 'rgba(255, 206, 161, .12)'; ctx.beginPath(); ctx.arc(W * .5, H * .42, 265, 0, Math.PI * 2); ctx.fill();
+      const bob = Math.sin(time * 2.1) * 4;
+      drawPerson(W * .5, 258 + bob, 1.05, .94);
+      ctx.save(); ctx.strokeStyle = 'rgba(255,248,241,.95)'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+      const pad = 54, corner = 72;
+      for (const [x, y, sx, sy] of [[pad, 168, 1, 1], [W - pad, 168, -1, 1], [pad, H - 260, 1, -1], [W - pad, H - 260, -1, -1]]) {
+        ctx.beginPath(); ctx.moveTo(x, y + sy * corner); ctx.lineTo(x, y); ctx.lineTo(x + sx * corner, y); ctx.stroke();
+      }
+      ctx.restore();
+      drawTop(phase === 1 ? 'Guided camera' : phase === 2 ? 'Scanning your fit' : 'Color direction', phase);
+    };
+    const drawPill = (label, x, y, fill = 'rgba(11,8,7,.56)', color = palette.cream) => { rounded(x, y, 190, 42, 21, fill); text(label, x + 95, y + 21, 15, color, 750, 'center'); };
+    const drawColorCard = (progress) => {
+      const y = H - 366;
+      rounded(34, y, W - 68, 208, 28, 'rgba(255,248,241,.96)');
+      text('Personal color direction', 62, y + 38, 20, palette.ink, 800);
+      text('Warm, earthy contrast detected', 62, y + 73, 15, '#6f5a50', 500);
+      const swatches = ['#7a3f2d', '#c7895d', '#d8aa6c', '#66704f', '#2b2623'];
+      swatches.forEach((color, i) => {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(77 + i * 62, y + 135, 22 + progress * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(30,23,20,.16)'; ctx.lineWidth = 3; ctx.stroke();
+      });
+      rounded(W - 214, y + 113, 150, 44, 22, palette.plum); text('AUTUMN', W - 139, y + 135, 15, '#fff', 800, 'center');
+    };
+    const drawResults = (progress) => {
+      rounded(32, 156, W - 64, 798, 32, 'rgba(255,248,241,.98)');
+      text('Your camera analysis', 68, 208, 25, palette.ink, 850);
+      text('A transparent look at the AI pipeline', 68, 246, 15, '#755f56', 500);
+      const rows = [
+        ['BODY', 'Silhouette + saved height', 'Fit estimate ready', palette.green],
+        ['COLOR', 'Visible color sampling', 'Autumn direction', palette.peach],
+        ['GUIDE', 'Lighting + framing checks', 'Retake if needed', palette.coral]
+      ];
+      rows.forEach((row, i) => {
+        const y = 316 + i * 142;
+        rounded(60, y, W - 120, 108, 22, '#f1e3d7');
+        ctx.fillStyle = row[3]; ctx.beginPath(); ctx.arc(98, y + 54, 21, 0, Math.PI * 2); ctx.fill();
+        text(row[0], 98, y + 54, 11, palette.ink, 900, 'center');
+        text(row[1], 138, y + 36, 16, palette.ink, 750);
+        text(row[2], 138, y + 72, 14, '#755f56', 500);
+        text('✓', W - 88, y + 54, 27, '#4d8f65', 900, 'center');
+      });
+      rounded(60, 778, W - 120, 74, 37, palette.brown);
+      text('Shop my verified fit', W / 2, 815, 19, '#fff7f0', 800, 'center');
+      wrap('Prototype estimate — confirm each brand chart before ordering.', 68, 906, W - 136, 13, '#7d6a61', 500, 21);
+      if (progress < 1) fade((1 - progress) * .35);
+    };
+    function drawFrame(time) {
+      ctx.clearRect(0, 0, W, H);
+      if (time < 2.1) {
+        const p = ease(time / 2.1);
+        const bg = ctx.createRadialGradient(W * .5, H * .38, 40, W * .5, H * .38, 620);
+        bg.addColorStop(0, '#7b4a37'); bg.addColorStop(1, '#160f0d'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+        drawLogo(W / 2, 490, 230 + p * 20, p, true);
+        text('CAMERA AI DEMO', W / 2, 675, 25, palette.peach, 850, 'center');
+        text('From one guided photo to style direction', W / 2, 726, 18, palette.cream, 500, 'center');
+        drawStepRail(-1); if (time < .35) fade((.35 - time) / .35);
+      } else if (time < 6.2) {
+        drawCamera(time, 1); drawPill('GOOD LIGHT', 44, 156, 'rgba(87, 151, 104, .9)');
+        rounded(34, H - 334, W - 68, 192, 28, 'rgba(16, 11, 10, .78)');
+        text('1  Frame the person', 62, H - 289, 22, palette.cream, 850);
+        wrap('Move to bright, even light. Keep one person visible from head to toe.', 62, H - 245, W - 124, 16, 'rgba(255,248,241,.78)', 500, 25);
+        rounded(W / 2 - 116, H - 178, 232, 54, 27, palette.peach); text('Ready to scan', W / 2, H - 151, 17, palette.ink, 850, 'center');
+        drawStepRail(0);
+      } else if (time < 10.3) {
+        drawCamera(time, 2); drawPill('PERSON DETECTED', 44, 156, 'rgba(87, 151, 104, .9)');
+        const p = ease((time - 6.2) / 4.1);
+        drawMeasure(W * .5, 408, 'CHEST', 186, p);
+        drawMeasure(W * .5, 525, 'WAIST', 152, p);
+        drawMeasure(W * .5, 646, 'HIP', 198, p);
+        rounded(34, H - 282, W - 68, 126, 28, 'rgba(16, 11, 10, .78)');
+        text('2  Estimate measurements', 62, H - 242, 21, palette.cream, 850);
+        text('Photo → silhouette geometry + saved height reference', 62, H - 201, 14, 'rgba(255,248,241,.76)', 500);
+        drawStepRail(1);
+        if (time < 6.75) { ctx.fillStyle = `rgba(255,248,241,${(6.75 - time) * 1.4})`; ctx.fillRect(0, 0, W, H); }
+      } else if (time < 14.25) {
+        drawCamera(time, 3); drawPill('EVEN LIGHT CHECK', 44, 156, 'rgba(208, 143, 92, .94)');
+        const p = ease((time - 10.3) / 3.95);
+        drawColorCard(p);
+        text('3  Analyze visible colors', 44, 208, 21, palette.cream, 850);
+        text('Pixel sampling + exposure checks → palette guidance', 44, 244, 14, 'rgba(255,248,241,.8)', 500);
+        drawStepRail(2);
+      } else if (time < 17.35) {
+        ctx.fillStyle = '#f4e5d8'; ctx.fillRect(0, 0, W, H);
+        drawTop('Your fit direction', 4);
+        drawResults(ease((time - 14.25) / 3.1));
+        drawStepRail(3);
+      } else {
+        const p = ease((time - 17.35) / .65);
+        ctx.fillStyle = '#1b1210'; ctx.fillRect(0, 0, W, H);
+        drawLogo(W / 2, 460, 210, p, true);
+        text('SEAMLY', W / 2, 640, 30, palette.cream, 850, 'center');
+        text('Scan smarter. Dress with confidence.', W / 2, 704, 18, palette.peach, 650, 'center');
+        text('stylorista-ai.jadesalvador3257.chatgpt.site', W / 2, 1160, 12, 'rgba(255,248,241,.65)', 500, 'center');
+        if (p < 1) fade((1 - p) * .5);
+      }
+    }
+
+    drawFrame(0);
+    async function waitForLogo() {
+      if (logo.complete && logo.naturalWidth) return;
+      await new Promise((resolve) => { logo.addEventListener('load', resolve, { once: true }); });
+    }
+    async function renderVideo() {
+      renderButton.disabled = true;
+      statusLine.textContent = 'Rendering the 18-second camera walkthrough…';
+      await waitForLogo();
+      const stream = canvas.captureStream(30);
+      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm;codecs=vp8';
+      const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+      const chunks = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      const finished = new Promise((resolve) => { recorder.onstop = resolve; });
+      recorder.start(200);
+      const started = performance.now();
+      const duration = 18;
+      await new Promise((resolve) => {
+        const tick = (now) => {
+          const elapsed = Math.min(duration, (now - started) / 1000);
+          drawFrame(elapsed);
+          statusLine.textContent = `Rendering… ${Math.round(elapsed / duration * 100)}%`;
+          if (elapsed < duration) requestAnimationFrame(tick); else resolve();
+        };
+        requestAnimationFrame(tick);
+      });
+      recorder.stop();
+      await finished;
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const saveResponse = await fetch('/save-demo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'video/webm' },
+        body: blob,
+      });
+      if (!saveResponse.ok) throw new Error('The local demo file could not be saved.');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'Seamly-camera-AI-demo.webm';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      drawFrame(18);
+      statusLine.textContent = 'Done — Seamly-camera-AI-demo.webm was saved and downloaded.';
+      renderButton.disabled = false;
+    }
+    renderButton.addEventListener('click', () => { renderVideo().catch((error) => { console.error(error); statusLine.textContent = `Could not render the video: ${error.message}`; renderButton.disabled = false; }); });
+  </script>
+</body>
+</html>

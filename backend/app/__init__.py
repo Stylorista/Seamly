@@ -1,1 +1,1 @@
-"""FashionTech backend package."""
+"""Seamly backend package."""

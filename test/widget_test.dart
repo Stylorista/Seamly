@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:stylorista_ai/app.dart';
-import 'package:stylorista_ai/features/home_screen.dart';
-import 'package:stylorista_ai/features/shop_screen.dart';
-import 'package:stylorista_ai/services/session_store.dart';
-import 'package:stylorista_ai/services/stylorista_api.dart';
+import 'package:seamly/app.dart';
+import 'package:seamly/features/home_screen.dart';
+import 'package:seamly/features/shop_screen.dart';
+import 'package:seamly/services/session_store.dart';
+import 'package:seamly/services/seamly_api.dart';
 
 void main() {
   testWidgets('shows the one-second loader only when the app starts', (
     tester,
   ) async {
     _useMobileTestViewport(tester);
-    await tester.pumpWidget(StyloristaApp(sessionStore: MemorySessionStore()));
+    await tester.pumpWidget(SeamlyApp(sessionStore: MemorySessionStore()));
 
     expect(find.byKey(const ValueKey('launch-logo')), findsOneWidget);
     expect(find.byKey(const ValueKey('sign-in-button')), findsNothing);
@@ -30,7 +30,7 @@ void main() {
     _useMobileTestViewport(tester);
     final sessionStore = MemorySessionStore();
     await tester.pumpWidget(
-      StyloristaApp(api: _FakeNewsApi(), sessionStore: sessionStore),
+      SeamlyApp(api: _FakeNewsApi(), sessionStore: sessionStore),
     );
     await tester.pumpAndSettle();
 
@@ -65,7 +65,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      StyloristaApp(api: _FakeNewsApi(), sessionStore: sessionStore),
+      SeamlyApp(api: _FakeNewsApi(), sessionStore: sessionStore),
     );
     await tester.pumpAndSettle();
 
@@ -76,7 +76,7 @@ void main() {
 
   testWidgets('switches to create-account mode', (tester) async {
     _useMobileTestViewport(tester);
-    await tester.pumpWidget(StyloristaApp(sessionStore: MemorySessionStore()));
+    await tester.pumpWidget(SeamlyApp(sessionStore: MemorySessionStore()));
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('Create new account'));
@@ -84,7 +84,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Create your profile'), findsOneWidget);
-    expect(find.text('FashionTech'), findsNothing);
+    expect(find.text('Seamly'), findsNothing);
     expect(
       find.text('See Your Size.\nKnow Your Style.\nShop With Confidence.'),
       findsNothing,
@@ -112,7 +112,7 @@ void main() {
     tester.platformDispatcher.textScaleFactorTestValue = 1.6;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
-    await tester.pumpWidget(StyloristaApp(sessionStore: MemorySessionStore()));
+    await tester.pumpWidget(SeamlyApp(sessionStore: MemorySessionStore()));
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(
@@ -136,7 +136,7 @@ void main() {
   ) async {
     _useMobileTestViewport(tester);
     await tester.pumpWidget(
-      StyloristaApp(
+      SeamlyApp(
         api: _FakeNewsApi(),
         initiallyAuthenticated: true,
         sessionStore: MemorySessionStore(),
@@ -195,7 +195,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
-      StyloristaApp(
+      SeamlyApp(
         api: _FakeNewsApi(),
         initiallyAuthenticated: true,
         sessionStore: MemorySessionStore(),
@@ -223,7 +223,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      StyloristaApp(
+      SeamlyApp(
         api: _FakeNewsApi(),
         initiallyAuthenticated: true,
         sessionStore: MemorySessionStore(),
@@ -231,14 +231,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('FashionTech'), findsOneWidget);
+    expect(find.text('Seamly'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('home-nav-Shop')));
     await tester.pumpAndSettle();
 
-    expect(find.text('FashionTech Shop'), findsOneWidget);
+    expect(find.text('Shop'), findsOneWidget);
     expect(find.text('Unlock AI fit ranking'), findsOneWidget);
-    expect(find.text('SOURCE-LINKED'), findsOneWidget);
+    expect(find.text('FROM THE SOURCE'), findsOneWidget);
     expect(find.text('Product source status'), findsOneWidget);
 
     await tester.tap(find.text('Measurements'));
@@ -285,7 +285,7 @@ void main() {
     _useMobileTestViewport(tester);
     final api = _FakeNewsApi();
     await tester.pumpWidget(
-      StyloristaApp(
+      SeamlyApp(
         api: api,
         initiallyAuthenticated: true,
         sessionStore: MemorySessionStore(),
@@ -310,7 +310,7 @@ void main() {
   testWidgets('profile tab opens the curated feature hub', (tester) async {
     _useMobileTestViewport(tester);
     await tester.pumpWidget(
-      StyloristaApp(
+      SeamlyApp(
         initiallyAuthenticated: true,
         sessionStore: MemorySessionStore(),
       ),
@@ -320,7 +320,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('home-nav-Profile')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Curated for you!'), findsOneWidget);
+    expect(find.text('Your style snapshot'), findsOneWidget);
     expect(find.text('Will it Fit?'), findsOneWidget);
     expect(find.text('In-the-Weather'), findsOneWidget);
     expect(find.text('Accessories'), findsOneWidget);
@@ -344,7 +344,7 @@ void main() {
         heightCm: 165,
       ),
     );
-    await tester.pumpWidget(StyloristaApp(sessionStore: sessionStore));
+    await tester.pumpWidget(SeamlyApp(sessionStore: sessionStore));
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
@@ -384,7 +384,7 @@ void main() {
 
 void _ignore() {}
 
-class _FakeNewsApi extends StyloristaApi {
+class _FakeNewsApi extends SeamlyApi {
   String? lastCategory;
 
   @override

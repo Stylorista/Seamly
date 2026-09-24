@@ -6,6 +6,9 @@
 **/__pycache__/
 **/.pytest_cache/
 **/.venv/
+**/.venv-ml/
+backend/models/*.task
+backend/models/*.tflite
 .DS_Store
 .atom/
 .build/
@@ -49,3 +52,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase Hosting local cache
+.firebase/
+
+# Leftover pytest deploy scratch
+backend/.pytest-temp-deploy/

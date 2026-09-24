@@ -43,7 +43,7 @@ class FashionNewsService:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(8.0),
             follow_redirects=True,
-            headers={"User-Agent": "FashionTech/1.3 fashion-news-feed"},
+            headers={"User-Agent": "Seamly/1.3 fashion-news-feed"},
         ) as client:
             tasks = [
                 self._fetch_gdelt(client, query, normalized, limit),

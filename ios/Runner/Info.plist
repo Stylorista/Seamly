@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>FashionTech</string>
+	<string>Seamly</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>FashionTech</string>
+	<string>Seamly</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,9 +27,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>FashionTech uses the camera to capture a well-lit full-body photo for measurement estimates.</string>
+	<string>Seamly uses the camera to capture a well-lit full-body photo for measurement estimates.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>FashionTech lets you choose a well-lit full-body photo for measurement estimates.</string>
+	<string>Seamly lets you choose a well-lit full-body photo for measurement estimates.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

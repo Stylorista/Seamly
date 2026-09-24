@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:stylorista_ai/app.dart';
-import 'package:stylorista_ai/features/camera_measurement_screen.dart';
-import 'package:stylorista_ai/services/session_store.dart';
-import 'package:stylorista_ai/services/stylorista_api.dart';
-import 'package:stylorista_ai/widgets/account_avatar.dart';
+import 'package:seamly/app.dart';
+import 'package:seamly/features/camera_measurement_screen.dart';
+import 'package:seamly/services/session_store.dart';
+import 'package:seamly/services/seamly_api.dart';
+import 'package:seamly/widgets/account_avatar.dart';
 
 const _pixel =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7l8AAAAASUVORK5CYII=';
@@ -35,7 +35,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final store = MemorySessionStore(initialState: _initial);
-    await tester.pumpWidget(StyloristaApp(api: api, sessionStore: store));
+    await tester.pumpWidget(SeamlyApp(api: api, sessionStore: store));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('header-account')));
     await tester.pumpAndSettle();
@@ -218,7 +218,7 @@ class _ProfilePicker extends ImagePickerPlatform {
   }) async => XFile.fromData(base64Decode(_pixel));
 }
 
-class _AccountApi extends StyloristaApi {
+class _AccountApi extends SeamlyApi {
   String name = 'Test Person';
   double height = 165;
   String? avatar;
