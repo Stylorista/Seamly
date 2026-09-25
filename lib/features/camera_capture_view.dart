@@ -1,4 +1,5 @@
 import 'package:camera/camera.dart' as camera;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -74,7 +75,11 @@ class CameraCaptureView extends StatelessWidget {
                           semanticLabel: 'Captured photo preview',
                         )
                       : ready
-                      ? _CoverPreview(controller: controller!)
+                      ? kIsWeb
+                          // Web video already cover-crops itself via CSS; our
+                          // ratio-based cover box would crop it a second time.
+                          ? controller!.buildPreview()
+                          : _CoverPreview(controller: controller!)
                       : const ColoredBox(color: Color(0xFF151515)),
                 ),
                 if (ready && !captured)
