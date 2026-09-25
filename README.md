@@ -1,5 +1,7 @@
 # Seamly
 
+<img src="assets/images/seamly_logo.png" alt="Seamly logo" width="200">
+
 Seamly is a privacy-conscious fashion styling MVP built with Flutter and FastAPI. It combines:
 
 - database-backed registration, hashed passwords, 30-day session tokens, and a one-time welcome screen;
@@ -54,7 +56,7 @@ Facebook and Instagram are shown as unavailable until an approved Meta app and e
 
 Publisher and GDELT images are taken from the story metadata. When a feed omits an image, the API attempts to read `og:image` or `twitter:image` from the article itself. It never substitutes the same local fashion photo across unrelated stories.
 
-Home weather uses Open-Meteo city search and its current/two-day forecast. Manila is the default, and users can enter another city without granting precise device-location permission.
+Home weather uses Open-Meteo city search and its current/two-day forecast, with a province-aware lookup so ambiguous names (provinces like Ilocos Norte, or cities like Kalibo and Vigan) resolve to the right Philippine area. Manila is the default, the chosen city is remembered across sessions, and users can enter another city without granting precise device-location permission.
 
 ### Account database
 
@@ -70,7 +72,9 @@ feed format and marketplace onboarding boundary.
 
 ## Use the online app
 
-Open [Seamly online](https://stylorista-ai.jadesalvador3257.chatgpt.site) in a current browser.
+Open [Seamly online](https://seamly-web.web.app) in a current browser.
+
+Native Android APKs are published on the [GitHub releases page](https://github.com/Stylorista/Seamly/releases).
 
 On iPhone, open the link in Safari, tap **Share**, then choose **Add to Home Screen**. This installs the web app icon and launches it in a standalone app window. A native App Store/TestFlight release still requires Apple Developer signing and a macOS/Xcode build.
 
