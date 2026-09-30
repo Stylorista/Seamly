@@ -49,6 +49,10 @@ class AccountLoginRequest(BaseModel):
         return value.strip().lower()
 
 
+class AccountGoogleLoginRequest(BaseModel):
+    id_token: str = Field(min_length=10, max_length=8000)
+
+
 class AccountProfile(BaseModel):
     id: str
     name: str

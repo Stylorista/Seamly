@@ -51,6 +51,10 @@ class SeamlyApi {
     });
   }
 
+  Future<Map<String, dynamic>> loginWithGoogle({required String idToken}) {
+    return _post('/v1/auth/google', {'id_token': idToken});
+  }
+
   Future<Map<String, dynamic>> fetchAccountProfile({required String token}) {
     return _get('/v1/account/profile', const {}, token: token);
   }

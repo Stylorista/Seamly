@@ -1,9 +1,13 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../services/session_store.dart';
 import '../services/seamly_api.dart';
+import '../services/google_sign_in_service.dart';
+import '../widgets/google_web_button.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
@@ -37,6 +41,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _obscurePassword = true;
   bool _acceptTerms = false;
   bool _loading = false;
+  bool _googleLoading = false;
 
   bool get _signingIn => _mode == _AuthMode.signIn;
 
@@ -105,6 +110,52 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleGoogleIdToken(String idToken) async {
+    if (_googleLoading) return;
+    setState(() => _googleLoading = true);
+    try {
+      final response = await widget.api.loginWithGoogle(idToken: idToken);
+      if (!mounted) return;
+      await widget.onAuthenticated(
+        AccountSession.fromApi(response),
+        response['is_new_account'] == true,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+      setState(() => _googleLoading = false);
+    }
+  }
+
+  Future<void> _signInWithGoogleMobile() async {
+    if (_loading || _googleLoading) return;
+    setState(() => _googleLoading = true);
+    try {
+      final idToken = await GoogleSignInService.signInWithGoogle();
+      await _handleGoogleIdToken(idToken);
+    } on GoogleSignInException catch (error) {
+      if (!mounted) return;
+      final message = switch (error.code) {
+        GoogleSignInExceptionCode.canceled => 'Google sign-in was cancelled.',
+        _ => 'Google sign-in failed. Please try again.',
+      };
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      setState(() => _googleLoading = false);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Google sign-in failed. Please try again.'),
+        ),
+      );
+      setState(() => _googleLoading = false);
+    }
   }
 
   @override
@@ -192,6 +243,17 @@ class _AuthScreenState extends State<AuthScreen> {
                                 onSwitchMode: _switchMode,
                               ),
                             ),
+                            const SizedBox(height: 16),
+                            _GoogleCard(
+                              googleLoading: _googleLoading,
+                              onGoogleIdToken: _handleGoogleIdToken,
+                              onGoogleError: (message) =>
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(message)),
+                                  ),
+                              onGooglePressed: _signInWithGoogleMobile,
+                              enabled: !_loading && !_googleLoading,
+                            ),
                           ],
                         ),
                       ),
@@ -201,6 +263,116 @@ class _AuthScreenState extends State<AuthScreen> {
               },
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GoogleCard extends StatelessWidget {
+  const _GoogleCard({
+    required this.googleLoading,
+    required this.onGoogleIdToken,
+    required this.onGoogleError,
+    required this.onGooglePressed,
+    required this.enabled,
+  });
+
+  final bool googleLoading;
+  final ValueChanged<String> onGoogleIdToken;
+  final ValueChanged<String> onGoogleError;
+  final VoidCallback onGooglePressed;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(32, 22, 32, 22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: const [
+              Expanded(child: Divider()),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  'or',
+                  style: TextStyle(color: Colors.black54, fontSize: 13),
+                ),
+              ),
+              Expanded(child: Divider()),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (kIsWeb) ...[
+            GoogleWebButton(onIdToken: onGoogleIdToken, onError: onGoogleError),
+            if (!GoogleConfig.isConfigured)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Add your Google Web client ID to enable one-tap sign-in.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black54, fontSize: 12),
+                ),
+              ),
+            if (googleLoading)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+          ] else ...[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const ValueKey('google-sign-in-button'),
+                onPressed: enabled ? onGooglePressed : null,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF1F1F1F),
+                  minimumSize: const Size.fromHeight(52),
+                  side: const BorderSide(
+                    color: Color(0xFFDADCE0),
+                    width: 1.2,
+                  ),
+                  shape: const StadiumBorder(),
+                  textStyle: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                icon: googleLoading
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text(
+                        'G',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF4285F4),
+                        ),
+                      ),
+                label: Text(
+                  googleLoading ? 'Signing in…' : 'Continue with Google',
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

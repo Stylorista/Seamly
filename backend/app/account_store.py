@@ -100,6 +100,67 @@ class AccountStore:
         token = self._create_session(row["id"])
         return token, self.profile_for_token(token)
 
+    def login_with_google(
+        self, *, google_sub: str, email: str, name: str
+    ) -> tuple[str, dict[str, Any], bool]:
+        """Sign in with a verified Google identity, linking by email.
+
+        Returns (token, profile, is_new_account). Existing password accounts
+        with the same email are reused and linked to the Google subject.
+        """
+        self._ensure_schema()
+        normalized_email = email.strip().lower()
+        display_name = (name or "").strip() or normalized_email.split("@")[0]
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE google_sub = ?",
+                (google_sub,),
+            ).fetchone()
+            if row is None:
+                row = connection.execute(
+                    "SELECT id, google_sub FROM users WHERE email = ?",
+                    (normalized_email,),
+                ).fetchone()
+                if row is not None and not row["google_sub"]:
+                    connection.execute(
+                        "UPDATE users SET google_sub = ? WHERE id = ?",
+                        (google_sub, row["id"]),
+                    )
+            if row is None:
+                user_id = uuid4().hex
+                created_at = datetime.now(UTC).isoformat()
+                try:
+                    connection.execute(
+                        """
+                        INSERT INTO users (
+                            id, name, email, password_hash, height_cm, phone,
+                            location, created_at, google_sub
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            user_id,
+                            display_name[:100],
+                            normalized_email,
+                            self._hash_password(secrets.token_urlsafe(32)),
+                            165,
+                            None,
+                            None,
+                            created_at,
+                            google_sub,
+                        ),
+                    )
+                except sqlite3.IntegrityError as error:
+                    raise AccountExistsError(
+                        "An account already exists for this email address."
+                    ) from error
+                is_new = True
+                user_id_for_session = user_id
+            else:
+                is_new = False
+                user_id_for_session = row["id"]
+        token = self._create_session(user_id_for_session)
+        return token, self.profile_for_token(token), is_new
+
     def profile_for_token(self, token: str) -> dict[str, Any]:
         self._ensure_schema()
         now = datetime.now(UTC).isoformat()
@@ -220,6 +281,19 @@ class AccountStore:
             )"""
         )
 
+    @staticmethod
+    def _ensure_google_column(connection: Any) -> None:
+        try:
+            columns = [row["name"] for row in connection.execute("PRAGMA table_info(users)")]
+        except Exception:
+            columns = ["google_sub"]
+        if "google_sub" not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN google_sub TEXT")
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx "
+            "ON users(google_sub)"
+        )
+
     def _create_session(self, user_id: str) -> str:
         token = secrets.token_urlsafe(32)
         now = datetime.now(UTC)
@@ -266,7 +340,8 @@ class AccountStore:
                         height_cm REAL NOT NULL,
                         phone TEXT,
                         location TEXT,
-                        created_at TEXT NOT NULL
+                        created_at TEXT NOT NULL,
+                        google_sub TEXT
                     );
                     CREATE TABLE IF NOT EXISTS sessions (
                         token_hash TEXT PRIMARY KEY,
@@ -286,6 +361,7 @@ class AccountStore:
                     """
                 )
                 self._ensure_picture_schema(connection)
+                self._ensure_google_column(connection)
             self._schema_ready = True
 
     @classmethod
@@ -380,9 +456,17 @@ class PostgresAccountStore(AccountStore):
                         height_cm DOUBLE PRECISION NOT NULL,
                         phone TEXT,
                         location TEXT,
-                        created_at TEXT NOT NULL
+                        created_at TEXT NOT NULL,
+                        google_sub TEXT
                     )
                     """
+                )
+                connection.execute(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT"
+                )
+                connection.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx "
+                    "ON users(google_sub)"
                 )
                 connection.execute(
                     """

@@ -14,11 +14,13 @@ from .account_store import (
     StaleMeasurementsError,
     create_account_store,
 )
+from .google_auth import GoogleAuthError, verify_google_id_token
 from .appearance_analysis import AppearanceAnalysisError, AppearanceAnalyzer
 from .body_scan import BodyScanError, BodyScanEstimator
 from .news_feed import FashionNewsService
 from .schemas import (
     AccountAuthResponse,
+    AccountGoogleLoginRequest,
     AccountLoginRequest,
     AccountProfile,
     AccountProfileUpdateRequest,
@@ -118,6 +120,27 @@ def login_account(request: AccountLoginRequest) -> AccountAuthResponse:
     return AccountAuthResponse(
         token=token,
         is_new_account=False,
+        profile=AccountProfile.model_validate(profile),
+    )
+
+
+@app.post("/v1/auth/google", response_model=AccountAuthResponse)
+def login_with_google(request: AccountGoogleLoginRequest) -> AccountAuthResponse:
+    try:
+        claims = verify_google_id_token(request.id_token)
+    except GoogleAuthError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    try:
+        token, profile, is_new = account_store.login_with_google(
+            google_sub=claims["sub"],
+            email=claims["email"],
+            name=claims["name"],
+        )
+    except AccountExistsError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return AccountAuthResponse(
+        token=token,
+        is_new_account=is_new,
         profile=AccountProfile.model_validate(profile),
     )
 
