@@ -82,8 +82,7 @@ void main() {
     expect(api.planCalls, 0);
   });
 
-  testWidgets('full flow renders the planned outfit', (tester) async {
-    _useViewport(tester);
+  testWidgets('full flow renders the planned outfit', (tester) async {    _useViewport(tester);
     final api = _FakePlanApi();
     await tester.pumpWidget(
       MaterialApp(
@@ -118,12 +117,48 @@ void main() {
     expect(find.textContaining('Garden Wedding look'), findsOneWidget);
     expect(find.textContaining('breathable'), findsOneWidget);
   });
+
+  testWidgets('brief weather blip retries once automatically', (tester) async {
+    _useViewport(tester);
+    final api = _FakePlanApi()..failFirstPlanCall = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          api: api,
+          onSelectFeature: (_) {},
+          sizeLabel: null,
+          colorSeason: null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('event-outfit-field')),
+      'office holiday party',
+    );
+    await tester.tap(find.byKey(const ValueKey('event-outfit-date')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const ValueKey('event-outfit-plan')));
+    await tester.tap(find.byKey(const ValueKey('event-outfit-plan')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+
+    expect(api.planCalls, 2);
+    expect(find.byKey(const ValueKey('event-outfit-result')), findsOneWidget);
+    expect(find.textContaining('temporarily unavailable'), findsNothing);
+  });
 }
 
 class _FakePlanApi extends SeamlyApi {
   int planCalls = 0;
   String? lastEventText;
   String? lastSizeLabel;
+  bool failFirstPlanCall = false;
 
   @override
   Future<Map<String, dynamic>> fetchHomeWeather({
@@ -181,6 +216,11 @@ class _FakePlanApi extends SeamlyApi {
     planCalls++;
     lastEventText = eventText;
     lastSizeLabel = sizeLabel;
+    if (failFirstPlanCall && planCalls == 1) {
+      throw const ApiException(
+        'Live weather is temporarily unavailable. Please try again.',
+      );
+    }
     return {
       'event_text': eventText,
       'occasion': 'event',

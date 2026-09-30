@@ -617,31 +617,54 @@ class _EventOutfitCardState extends State<_EventOutfitCard> {
       _error = null;
     });
     unawaited(_persistInputs());
-    try {
-      final result = await widget.api.planEventOutfit(
-        eventText: eventText,
-        city: widget.city,
-        eventDate:
-            '${_date!.year.toString().padLeft(4, '0')}-${_date!.month.toString().padLeft(2, '0')}-${_date!.day.toString().padLeft(2, '0')}',
-        eventTime:
-            '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}',
-        style: _effectiveStyle.isEmpty ? null : _effectiveStyle,
-        sizeLabel: widget.sizeLabel,
-        colorSeason: widget.colorSeason,
-        measurements: widget.measurements,
-      );
-      if (mounted) setState(() => _result = result);
-    } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
-    } on Exception {
-      if (mounted) {
-        setState(
-          () => _error = 'Could not plan your outfit. Check your connection.',
-        );
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final result = await _attemptPlan(eventText);
+        if (!mounted) return;
+        setState(() {
+          _result = result;
+          _loading = false;
+        });
+        return;
+      } on ApiException catch (error) {
+        final transient = error.message.contains('temporarily unavailable');
+        if (transient && attempt == 0) {
+          // Brief provider blip: wait, then try once more on our own.
+          await Future<void>.delayed(const Duration(seconds: 5));
+          if (!mounted) return;
+          continue;
+        }
+        if (!mounted) return;
+        setState(() {
+          _error = error.message;
+          _loading = false;
+        });
+        return;
+      } on Exception {
+        if (!mounted) return;
+        setState(() {
+          _error = 'Could not plan your outfit. Check your connection.';
+          _loading = false;
+        });
+        return;
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<Map<String, dynamic>> _attemptPlan(String eventText) {
+    return widget.api.planEventOutfit(
+      eventText: eventText,
+      city: widget.city,
+      eventDate:
+          '${_date!.year.toString().padLeft(4, '0')}-${_date!.month.toString().padLeft(2, '0')}-${_date!.day.toString().padLeft(2, '0')}',
+      eventTime:
+          '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}',
+      style: _effectiveStyle.isEmpty ? null : _effectiveStyle,
+      sizeLabel: widget.sizeLabel,
+      colorSeason: widget.colorSeason,
+      measurements: widget.measurements,
+    );
   }
 
   @override

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
@@ -120,6 +121,31 @@ class WeatherServiceError(ValueError):
     pass
 
 
+async def _get_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    params: dict[str, object] | None = None,
+    attempts: int = 3,
+) -> httpx.Response:
+    """GET with backoff for rate limits, cold starts and brief outages."""
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code not in (408, 429, 500, 502, 503, 504):
+                raise
+            last_error = error
+        except (httpx.ConnectError, httpx.TimeoutException) as error:
+            last_error = error
+        if attempt < attempts - 1:
+            await asyncio.sleep(1.0 * (attempt + 1))
+    assert last_error is not None
+    raise last_error
+
+
 class WeatherStyleService:
     def __init__(self) -> None:
         self._cache: dict[str, tuple[datetime, WeatherHomeResponse]] = {}
@@ -235,12 +261,24 @@ class WeatherStyleService:
                     "uv_index_max": None,
                     "is_forecast": False,
                 }
-            forecast = await self._forecast_for_date(
-                client,
-                latitude=float(location["latitude"]),
-                longitude=float(location["longitude"]),
-                event_date=event_date,
-            )
+            try:
+                forecast = await self._forecast_for_date(
+                    client,
+                    latitude=float(location["latitude"]),
+                    longitude=float(location["longitude"]),
+                    event_date=event_date,
+                )
+            except httpx.HTTPError:
+                if 0 <= days_ahead <= 2:
+                    return await self._fetch_wttr_for_date(
+                        client,
+                        city=normalized_city,
+                        location=location,
+                        event_date=event_date,
+                        hour=hour,
+                        timezone=timezone,
+                    )
+                raise
             hourly = forecast.get("hourly", {})
             daily = forecast.get("daily", {})
             if not isinstance(hourly, dict) or not isinstance(daily, dict):
@@ -282,7 +320,8 @@ class WeatherStyleService:
         last_error: WeatherServiceError | None = None
         for name, hint, province in attempts:
             for search_name in self._search_variants(name):
-                response = await client.get(
+                response = await _get_with_retry(
+                    client,
                     "https://geocoding-api.open-meteo.com/v1/search",
                     params={
                         "name": search_name,
@@ -291,7 +330,6 @@ class WeatherStyleService:
                         "format": "json",
                     },
                 )
-                response.raise_for_status()
                 results = response.json().get("results", [])
                 if not results:
                     last_error = WeatherServiceError(
@@ -443,7 +481,8 @@ class WeatherStyleService:
         latitude: float,
         longitude: float,
     ) -> dict[str, object]:
-        response = await client.get(
+        response = await _get_with_retry(
+            client,
             "https://api.open-meteo.com/v1/forecast",
             params={
                 "latitude": latitude,
@@ -461,7 +500,6 @@ class WeatherStyleService:
                 "forecast_days": 2,
             },
         )
-        response.raise_for_status()
         return response.json()
 
     async def _forecast_for_date(
@@ -473,7 +511,8 @@ class WeatherStyleService:
         event_date: date,
     ) -> dict[str, object]:
         iso = event_date.isoformat()
-        response = await client.get(
+        response = await _get_with_retry(
+            client,
             "https://api.open-meteo.com/v1/forecast",
             params={
                 "latitude": latitude,
@@ -489,8 +528,89 @@ class WeatherStyleService:
                 "forecast_days": 16,
             },
         )
-        response.raise_for_status()
         return response.json()
+
+    async def _fetch_wttr_for_date(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        city: str,
+        location: dict[str, object],
+        event_date: date,
+        hour: int,
+        timezone: str,
+    ) -> dict[str, object]:
+        """wttr.in fallback for event dates within its 3-day window."""
+        query = f"{float(location['latitude'])},{float(location['longitude'])}"
+        try:
+            query_city = str(location.get("name") or city)
+        except (ValueError, TypeError, KeyError):
+            query_city = city
+        response = await _get_with_retry(
+            client, f"https://wttr.in/{query}", params={"format": "j1"}
+        )
+        payload = response.json()
+        days = payload.get("weather") or []
+        target = event_date.isoformat()
+        day = next(
+            (
+                entry
+                for entry in days
+                if isinstance(entry, dict) and entry.get("date") == target
+            ),
+            None,
+        )
+        if day is None:
+            raise WeatherServiceError(
+                "The dated forecast is temporarily unavailable. Please try again."
+            )
+        hours = day.get("hourly") or []
+        if not hours:
+            raise WeatherServiceError(
+                "The dated forecast is temporarily unavailable. Please try again."
+            )
+
+        def _slot_value(slot: object) -> int:
+            try:
+                return int(str(slot))
+            except (TypeError, ValueError):
+                return 0
+
+        best = min(
+            (slot for slot in hours if isinstance(slot, dict)),
+            key=lambda slot: abs(_slot_value(slot.get("time")) // 100 - hour),
+            default={},
+        )
+        descriptions = best.get("weatherDesc") or []
+        desc = (
+            str(descriptions[0].get("value", "")).strip()
+            if descriptions and isinstance(descriptions[0], dict)
+            else ""
+        ) or "Mixed conditions"
+
+        def _number(value: object, default: float = 0.0) -> float:
+            try:
+                return float(str(value))
+            except (TypeError, ValueError):
+                return default
+
+        return {
+            "location": location,
+            "timezone": timezone,
+            "hour": hour,
+            "temperature_c": round(_number(best.get("tempC")), 1),
+            "feels_like_c": round(
+                _number(best.get("FeelsLikeC"), _number(best.get("tempC"))), 1
+            ),
+            "condition": desc,
+            "weather_code": None,
+            "rain_probability": round(_number(best.get("chanceofrain"))),
+            "wind_kmh": round(_number(best.get("windspeedKmph")), 1),
+            "uv_index_max": round(_number(best.get("uvIndex")) or 0, 1),
+            "is_forecast": True,
+            "source": "wttr.in fallback",
+            "city": query_city,
+        }
 
     async def _fetch_wttr_fallback(
         self,
