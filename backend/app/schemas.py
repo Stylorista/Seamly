@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -214,6 +214,70 @@ class StyleResponse(BaseModel):
     palette: list[str]
     styling_notes: list[str]
     model_version: str
+
+
+class OutfitPlanRequest(BaseModel):
+    event_text: str = Field(min_length=2, max_length=80)
+    city: str = Field(min_length=2, max_length=100)
+    event_date: date
+    event_time: str | None = Field(default=None, max_length=5)
+    style: str | None = Field(default=None, max_length=40)
+    climate: Literal["tropical", "temperate", "cold", "arid"] = "tropical"
+    hemisphere: Literal["northern", "southern"] = "northern"
+    size_label: str | None = Field(default=None, max_length=12)
+    color_season: Literal["Spring", "Summer", "Autumn", "Winter"] | None = None
+    measurements: Measurements | None = None
+
+    @field_validator("event_text")
+    @classmethod
+    def clean_event_text(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if len(value) < 2:
+            raise ValueError("Describe your event in at least two characters.")
+        return value
+
+    @field_validator("event_time")
+    @classmethod
+    def validate_event_time(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            datetime.strptime(value.strip(), "%H:%M")
+        except ValueError:
+            raise ValueError("Use 24-hour HH:MM time such as 16:00")
+        return value.strip()
+
+
+class OutfitPlanWeather(BaseModel):
+    temperature_c: float | None = None
+    feels_like_c: float | None = None
+    condition: str
+    rain_probability: int | None = Field(default=None, ge=0, le=100)
+    wind_kmh: float | None = Field(default=None, ge=0)
+    uv_index_max: float | None = Field(default=None, ge=0)
+    is_forecast: bool
+
+
+class OutfitPlanResponse(BaseModel):
+    event_text: str
+    occasion: str
+    style_used: str
+    city: str
+    location: str
+    event_datetime: str
+    timezone: str
+    weather: OutfitPlanWeather
+    title: str
+    summary: str
+    pieces: list[str]
+    fabrics: list[str]
+    palette: list[str]
+    styling_notes: list[str]
+    fit_notes: list[str] = Field(default_factory=list)
+    reasons: list[str]
+    confidence: float = Field(ge=0, le=1)
+    model_version: str
+    disclaimer: str
 
 
 class FashionNewsPost(BaseModel):

@@ -452,6 +452,7 @@ class _SeamlyShellState extends State<SeamlyShell> {
         onSelectFeature: _selectPage,
         sizeLabel: _sizeLabel,
         colorSeason: _colorSeason,
+        measurements: _scannedMeasurements,
         onOpenAccount: _openAccount,
         avatarBase64: widget.account?.avatarBase64,
       ),

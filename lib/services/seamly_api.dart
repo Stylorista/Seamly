@@ -195,6 +195,30 @@ class SeamlyApi {
     });
   }
 
+  Future<Map<String, dynamic>> planEventOutfit({
+    required String eventText,
+    required String city,
+    required String eventDate,
+    String? eventTime,
+    String? style,
+    String? sizeLabel,
+    String? colorSeason,
+    Map<String, double>? measurements,
+  }) {
+    return _post('/v1/outfits/plan', {
+      'event_text': eventText.trim(),
+      'city': city,
+      'event_date': eventDate,
+      if (eventTime != null && eventTime.isNotEmpty) 'event_time': eventTime,
+      if (style != null && style.isNotEmpty) 'style': style,
+      if (sizeLabel != null && sizeLabel.isNotEmpty) 'size_label': sizeLabel,
+      if (colorSeason != null && colorSeason.isNotEmpty)
+        'color_season': colorSeason,
+      if (measurements != null && measurements.isNotEmpty)
+        'measurements': measurements,
+    }, timeout: const Duration(seconds: 90));
+  }
+
   Future<Map<String, dynamic>> _post(
     String path,
     Map<String, dynamic> payload, {

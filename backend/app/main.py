@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from typing import Literal
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from .ai_engine import SeamlyEngine
+from .ai_engine import SIZE_CENTRES, SeamlyEngine
 from .account_store import (
     AccountExistsError,
     InvalidCredentialsError,
@@ -34,6 +35,9 @@ from .schemas import (
     ColorRequest,
     ColorResponse,
     FashionNewsResponse,
+    OutfitPlanRequest,
+    OutfitPlanResponse,
+    OutfitPlanWeather,
     SizeRequest,
     SizeResponse,
     SavedMeasurementsRequest,
@@ -278,3 +282,104 @@ def analyze_color(request: ColorRequest) -> ColorResponse:
 @app.post("/v1/style/recommend", response_model=StyleResponse)
 def recommend_style(request: StyleRequest) -> StyleResponse:
     return engine.recommend_style(request)
+
+
+@app.post("/v1/outfits/plan", response_model=OutfitPlanResponse)
+async def plan_event_outfit(request: OutfitPlanRequest) -> OutfitPlanResponse:
+    if request.event_date < datetime.now(UTC).date():
+        raise HTTPException(
+            status_code=422, detail="Pick a future date for your event."
+        )
+    try:
+        moment = await weather_style_service.fetch_for_datetime(
+            request.city, request.event_date, request.event_time
+        )
+    except WeatherServiceError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except httpx.HTTPError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Live weather is temporarily unavailable. Please try again.",
+        ) from error
+
+    location = moment["location"] if isinstance(moment.get("location"), dict) else {}
+    occasion = engine.canonicalize_occasion(request.event_text)
+    style_used = engine.canonicalize_style(request.style)
+    color_season = request.color_season or "Autumn"
+    style_result = engine.recommend_style(
+        StyleRequest(
+            climate=request.climate,
+            hemisphere=request.hemisphere,
+            month=request.event_date.month,
+            occasion=occasion,  # type: ignore[arg-type]
+            style=style_used,  # type: ignore[arg-type]
+            color_season=color_season,
+            size_label=request.size_label,
+        )
+    )
+    temp = moment.get("temperature_c")
+    feels = moment.get("feels_like_c")
+    rain = moment.get("rain_probability")
+    wind = moment.get("wind_kmh")
+    uv = moment.get("uv_index_max")
+    hour = int(moment.get("hour", 18)) if isinstance(moment.get("hour"), int) else 18
+    reasons = engine.event_weather_adjustments(
+        temp_c=float(temp) if temp is not None else None,
+        feels_c=float(feels) if feels is not None else None,
+        rain_probability=int(rain) if rain is not None else None,
+        wind_kmh=float(wind) if wind is not None else None,
+        uv_index=float(uv) if uv is not None else None,
+        hour=hour,
+        occasion=occasion,
+        event_text=request.event_text,
+    )
+    is_forecast = bool(moment.get("is_forecast"))
+    if not is_forecast:
+        reasons = [
+            "Beyond the 16-day forecast window, so this is a seasonal "
+            "estimate rather than a true forecast."
+        ] + reasons
+
+    fit_notes: list[str] = []
+    if request.measurements is not None and request.size_label in SIZE_CENTRES:
+        fit_notes = engine._fit_notes(
+            request.measurements.model_dump(), request.size_label or "M", "regular"
+        )
+
+    has_measurements = request.measurements is not None
+    confidence = 0.8 if (is_forecast and has_measurements) else (0.7 if is_forecast else 0.55)
+    event_time = request.event_time or "18:00"
+    place = str(location.get("name") or request.city.strip())
+    return OutfitPlanResponse(
+        event_text=request.event_text,
+        occasion=occasion,
+        style_used=style_used,
+        city=request.city.strip(),
+        location=place,
+        event_datetime=f"{request.event_date.isoformat()}T{event_time}",
+        timezone=str(moment.get("timezone", "auto")),
+        weather=OutfitPlanWeather(
+            temperature_c=float(temp) if temp is not None else None,
+            feels_like_c=float(feels) if feels is not None else None,
+            condition=str(moment.get("condition", "Mixed conditions")),
+            rain_probability=int(rain) if rain is not None else None,
+            wind_kmh=float(wind) if wind is not None else None,
+            uv_index_max=float(uv) if uv is not None else None,
+            is_forecast=is_forecast,
+        ),
+        title=f"{request.event_text.strip().title()} look: {style_result.title}",
+        summary=style_result.summary,
+        pieces=style_result.pieces,
+        fabrics=style_result.fabrics,
+        palette=style_result.palette,
+        styling_notes=style_result.styling_notes,
+        fit_notes=fit_notes,
+        reasons=reasons,
+        confidence=confidence,
+        model_version=f"event-outfit-0.1.0+{style_result.model_version}",
+        disclaimer=(
+            "Forecast-based styling suggestion, not a guarantee. Weather can "
+            "shift; confirm sizes against each seller chart. "
+            + ("This uses a seasonal estimate, not a live forecast." if not is_forecast else "Check the forecast again near the event.")
+        ),
+    )

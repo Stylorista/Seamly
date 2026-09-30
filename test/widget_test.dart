@@ -155,6 +155,12 @@ void main() {
     expect(find.text('Your relevant fashion'), findsNothing);
     expect(find.text('What to wear'), findsOneWidget);
     expect(find.text('Airy warm-weather layers'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('home-weather-details')),
+      find.byKey(const ValueKey('home-content')),
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('home-weather-details')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Tomorrow · Rain showers'), findsOneWidget);
@@ -178,9 +184,15 @@ void main() {
     expect(find.text('Airy warm-weather layers'), findsOneWidget);
     expect(find.text('Today · Partly cloudy'), findsOneWidget);
 
+    await tester.dragUntilVisible(
+      find.text('Change city'),
+      find.byKey(const ValueKey('home-content')),
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Change city'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Cebu');
+    await tester.enterText(find.byKey(const ValueKey('home-city-field')), 'Cebu');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
@@ -209,9 +221,15 @@ void main() {
 
     api.failWeatherWith =
         'No weather location matched "Atlantis". Try adding the country.';
+    await tester.dragUntilVisible(
+      find.text('Change city'),
+      find.byKey(const ValueKey('home-content')),
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Change city'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Atlantis');
+    await tester.enterText(find.byKey(const ValueKey('home-city-field')), 'Atlantis');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
@@ -237,9 +255,15 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.text('Change city'),
+      find.byKey(const ValueKey('home-content')),
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Change city'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Cebu');
+    await tester.enterText(find.byKey(const ValueKey('home-city-field')), 'Cebu');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(find.text('Cebu'), findsOneWidget);
@@ -308,13 +332,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.text('Change city'),
+      find.byKey(const ValueKey('home-content')),
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Change city'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Cebu');
+    await tester.enterText(find.byKey(const ValueKey('home-city-field')), 'Cebu');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     final homeState = tester.state(find.byType(HomeScreen));
     await tester.ensureVisible(find.byKey(const ValueKey('home-start-scan')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('home-start-scan')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('home-nav-Shop')), findsNothing);
@@ -682,3 +713,5 @@ void _useMobileTestViewport(WidgetTester tester) {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 }
+
+

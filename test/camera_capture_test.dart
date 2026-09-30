@@ -108,6 +108,43 @@ void main() {
     });
   }
 
+  testWidgets('green ready banner appears below the preview when ready', (
+    tester,
+  ) async {
+    _viewport(tester, const Size(430, 900));
+    final controller = _PreviewController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: _view(
+            controller: controller,
+            previewReady: true,
+            previewGuidance: 'Ready — hold still and take the photo.',
+            previewBbox: const [0.3, 0.08, 0.4, 0.84],
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('camera-ready-banner')), findsOneWidget);
+    expect(find.text('Good to go — take the picture!'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: _view(
+            controller: controller,
+            previewGuidance: 'Stand fully visible in the frame.',
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('camera-ready-banner')), findsNothing);
+    expect(find.text('Good to go — take the picture!'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('landscape result controls scroll without overflowing', (
     tester,
   ) async {

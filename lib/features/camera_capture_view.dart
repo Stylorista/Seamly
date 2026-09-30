@@ -86,6 +86,12 @@ class CameraCaptureView extends StatelessWidget {
                   const IgnorePointer(
                     child: CustomPaint(painter: _ThirdsGrid()),
                   ),
+                if (ready && !captured)
+                  IgnorePointer(
+                    child: CustomPaint(
+                      painter: _FramingGuide(ready: previewReady),
+                    ),
+                  ),
                 if (ready && !captured && previewBbox != null)
                   IgnorePointer(
                     child: CustomPaint(
@@ -237,19 +243,71 @@ class CameraCaptureView extends StatelessWidget {
                             else if (!captured)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 14),
-                                child: Text(
-                                  previewGuidance ??
-                                      'Even light · Head to toe in frame',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: previewReady
-                                        ? const Color(0xFF4ADE80)
-                                        : Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: previewReady
-                                        ? FontWeight.w700
-                                        : FontWeight.w400,
-                                  ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      previewGuidance ??
+                                          'Even light · Head to toe in frame',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: previewReady
+                                            ? const Color(0xFF4ADE80)
+                                            : Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: previewReady
+                                            ? FontWeight.w700
+                                            : FontWeight.w400,
+                                      ),
+                                    ),
+                                    if (previewReady) ...[
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        key: const ValueKey(
+                                          'camera-ready-banner',
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF16A34A),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: Color(0xFF4ADE80),
+                                              blurRadius: 18,
+                                              spreadRadius: 1,
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.check_circle_rounded,
+                                              color: Colors.white,
+                                              size: 22,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Flexible(
+                                              child: Text(
+                                                'Good to go — take the picture!',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                             if (colorResult != null && !busy) ...[
@@ -310,11 +368,23 @@ class CameraCaptureView extends StatelessWidget {
                                     style: IconButton.styleFrom(
                                       foregroundColor: Colors.white,
                                       disabledForegroundColor: Colors.white54,
-                                      side: const BorderSide(
-                                        color: Colors.white,
+                                      side: BorderSide(
+                                        color:
+                                            previewReady &&
+                                                !captured &&
+                                                !busy
+                                            ? const Color(0xFF4ADE80)
+                                            : Colors.white,
                                         width: 5,
                                       ),
-                                      backgroundColor: Colors.white12,
+                                      backgroundColor:
+                                          previewReady &&
+                                              !captured &&
+                                              !busy
+                                          ? const Color(
+                                              0xFF16A34A,
+                                            ).withValues(alpha: 0.45)
+                                          : Colors.white12,
                                     ),
                                     icon: busy
                                         ? const SizedBox.square(
@@ -464,6 +534,78 @@ class _ThirdsGrid extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _FramingGuide extends CustomPainter {
+  const _FramingGuide({required this.ready});
+
+  final bool ready;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Big full-body target so users know where to stand: a tall rounded
+    // frame with a head circle. Much larger than the detected-person box,
+    // which only appears once the backend sees someone.
+    final color = ready
+        ? const Color(0xFF4ADE80)
+        : Colors.white.withValues(alpha: 0.55);
+    final frameWidth = size.width * 0.62;
+    final frameHeight = size.height * 0.78;
+    final left = (size.width - frameWidth) / 2;
+    final top = size.height * 0.08;
+    final frame = Rect.fromLTWH(left, top, frameWidth, frameHeight);
+
+    final outline = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = ready ? 4 : 2.5
+      ..color = color;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(frame, const Radius.circular(36)),
+      outline,
+    );
+
+    // Head circle hint at the top of the frame.
+    final headRadius = frameWidth * 0.16;
+    final headCenter = Offset(
+      frame.center.dx,
+      top + headRadius + frameHeight * 0.02,
+    );
+    canvas.drawCircle(headCenter, headRadius, outline);
+
+    // Feet line hint at the bottom of the frame.
+    final feetY = top + frameHeight - frameHeight * 0.04;
+    canvas.drawLine(
+      Offset(left + frameWidth * 0.2, feetY),
+      Offset(left + frameWidth * 0.8, feetY),
+      outline..strokeWidth = ready ? 5 : 3,
+    );
+
+    // Corner ticks so the frame reads at a glance.
+    final tick = 26.0;
+    final cornerPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = ready ? 6 : 4
+      ..strokeCap = StrokeCap.round
+      ..color = ready ? color : Colors.white.withValues(alpha: 0.85);
+    void corner(Offset origin, Offset a, Offset b) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(origin.dx + a.dx, origin.dy + a.dy)
+          ..lineTo(origin.dx, origin.dy)
+          ..lineTo(origin.dx + b.dx, origin.dy + b.dy),
+        cornerPaint,
+      );
+    }
+
+    corner(frame.topLeft, Offset(tick, 0), Offset(0, tick));
+    corner(frame.topRight, Offset(-tick, 0), Offset(0, tick));
+    corner(frame.bottomLeft, Offset(tick, 0), Offset(0, -tick));
+    corner(frame.bottomRight, Offset(-tick, 0), Offset(0, -tick));
+  }
+
+  @override
+  bool shouldRepaint(covariant _FramingGuide oldDelegate) =>
+      oldDelegate.ready != ready;
 }
 
 class _BodyOutlinePainter extends CustomPainter {

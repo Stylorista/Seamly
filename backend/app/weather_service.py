@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
@@ -185,6 +185,93 @@ class WeatherStyleService:
 
         self._cache[cache_key] = (datetime.now(UTC), response)
         return response
+
+    async def fetch_for_datetime(
+        self,
+        city: str,
+        event_date: date,
+        event_time: str | None,
+    ) -> dict[str, object]:
+        """Forecast slice for a specific event date + hour.
+
+        Returns a dict with location, timezone, temperature_c, feels_like_c,
+        condition, weather_code, rain_probability, wind_kmh, uv_index_max,
+        hour and is_forecast. Dates beyond the 16-day Open-Meteo window
+        return ``is_forecast=False`` with null weather values so the caller
+        can fall back to a seasonal estimate.
+        """
+        normalized_city = city.strip()
+        if len(normalized_city) < 2:
+            raise WeatherServiceError("Enter at least two letters for the city.")
+        hour = 18
+        if event_time:
+            try:
+                hour = int(event_time.split(":")[0])
+            except (ValueError, IndexError):
+                hour = 18
+
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(20.0, connect=10.0),
+            follow_redirects=True,
+            headers={"User-Agent": "Seamly/1.3 event-outfit"},
+        ) as client:
+            location = await self._geocode(client, normalized_city)
+            days_ahead = (event_date - datetime.now(UTC).date()).days
+            timezone = str(location.get("timezone", "auto"))
+            base: dict[str, object] = {
+                "location": location,
+                "timezone": timezone,
+                "hour": hour,
+            }
+            if days_ahead > 15:
+                return {
+                    **base,
+                    "temperature_c": None,
+                    "feels_like_c": None,
+                    "condition": "Seasonal estimate",
+                    "weather_code": None,
+                    "rain_probability": None,
+                    "wind_kmh": None,
+                    "uv_index_max": None,
+                    "is_forecast": False,
+                }
+            forecast = await self._forecast_for_date(
+                client,
+                latitude=float(location["latitude"]),
+                longitude=float(location["longitude"]),
+                event_date=event_date,
+            )
+            hourly = forecast.get("hourly", {})
+            daily = forecast.get("daily", {})
+            if not isinstance(hourly, dict) or not isinstance(daily, dict):
+                raise WeatherServiceError("The weather provider returned an incomplete forecast.")
+            times = hourly.get("time", [])
+            if not isinstance(times, list) or not times:
+                raise WeatherServiceError("The weather provider returned an incomplete forecast.")
+            best = min(
+                range(len(times)),
+                key=lambda i: abs(int(str(times[i])[-5:-3]) - hour),
+            )
+            temps = hourly.get("temperature_2m", [])
+            feels = hourly.get("apparent_temperature", [])
+            codes = hourly.get("weather_code", [])
+            rains = hourly.get("precipitation_probability", [])
+            winds = hourly.get("wind_speed_10m", [])
+            code = int(codes[best]) if len(codes) > best else 2
+            daily_rain = daily.get("precipitation_probability_max", [])
+            daily_uv = daily.get("uv_index_max", [])
+            return {
+                **base,
+                "temperature_c": round(float(temps[best]), 1) if len(temps) > best else None,
+                "feels_like_c": round(float(feels[best]), 1) if len(feels) > best else None,
+                "condition": self._condition(code),
+                "weather_code": code,
+                "rain_probability": round(float(rains[best])) if len(rains) > best else None,
+                "wind_kmh": round(float(winds[best]), 1) if len(winds) > best else None,
+                "uv_index_max": round(float(daily_uv[0]), 1) if daily_uv else None,
+                "daily_rain_max": round(float(daily_rain[0])) if daily_rain else None,
+                "is_forecast": True,
+            }
 
     async def _geocode(
         self,
@@ -372,6 +459,34 @@ class WeatherStyleService:
                 ),
                 "timezone": "auto",
                 "forecast_days": 2,
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def _forecast_for_date(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        latitude: float,
+        longitude: float,
+        event_date: date,
+    ) -> dict[str, object]:
+        iso = event_date.isoformat()
+        response = await client.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": latitude,
+                "longitude": longitude,
+                "hourly": (
+                    "temperature_2m,apparent_temperature,precipitation_probability,"
+                    "weather_code,wind_speed_10m"
+                ),
+                "daily": "weather_code,precipitation_probability_max,uv_index_max",
+                "timezone": "auto",
+                "start_date": iso,
+                "end_date": iso,
+                "forecast_days": 16,
             },
         )
         response.raise_for_status()

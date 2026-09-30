@@ -307,3 +307,72 @@ class SeamlyEngine:
         inverse = {"winter": "summer", "spring": "autumn", "summer": "winter", "autumn": "spring"}
         return inverse[north[month]]
 
+    @staticmethod
+    def canonicalize_occasion(event_text: str) -> str:
+        """Map free-text event descriptions to an engine occasion."""
+        text = event_text.casefold()
+        work_words = ("office", "work", "mixer", "network", "conference", "seminar", "interview", "meeting")
+        travel_words = ("beach", "cruise", "festival", "hike", "travel", "flight", "picnic")
+        event_words = ("wedding", "cocktail", "brunch", "birthday", "engag", "party", "date", "funeral",
+                       "celebration of life", "church", "graduation", "ceremony", "gala", "banquet", "reunion",
+                       "holiday", "prom", "shower")
+        if any(word in text for word in work_words):
+            return "work"
+        if any(word in text for word in travel_words):
+            return "travel"
+        if any(word in text for word in event_words):
+            return "event"
+        return "everyday"
+
+    @staticmethod
+    def canonicalize_style(style_text: str | None) -> str:
+        """Map free-text style wishes to an engine style."""
+        if not style_text:
+            return "minimal"
+        text = style_text.casefold()
+        if any(word in text for word in ("classic", "elegant", "formal", "preppy", "timeless", "sophisticat")):
+            return "classic"
+        if any(word in text for word in ("street", "sporty", "edgy", "urban", "casual", "cool", "hip")):
+            return "street"
+        if any(word in text for word in ("romantic", "cute", "soft", "feminine", "flowy", "delicate", "sweet")):
+            return "romantic"
+        return "minimal"
+
+    @staticmethod
+    def event_weather_adjustments(
+        *,
+        temp_c: float | None,
+        feels_c: float | None,
+        rain_probability: int | None,
+        wind_kmh: float | None,
+        uv_index: float | None,
+        hour: int,
+        occasion: str,
+        event_text: str,
+    ) -> list[str]:
+        """Human-readable reasons tying the hour's weather to the outfit."""
+        reasons: list[str] = []
+        heat = feels_c if feels_c is not None else temp_c
+        if heat is not None:
+            if heat >= 32:
+                reasons.append(f"{heat:.0f}° feels-like heat calls for breathable linen and open fits.")
+            elif heat >= 28:
+                reasons.append(f"Warm {heat:.0f}° air favors light, sweat-friendly fabrics.")
+            elif heat <= 20:
+                reasons.append(f"Cool {heat:.0f}° air means one real layer, not just a cover-up.")
+        if rain_probability is not None and rain_probability >= 40:
+            reasons.append(f"{rain_probability}% rain risk favors quick-dry fabrics and darker colors.")
+        elif rain_probability is not None and rain_probability >= 20:
+            reasons.append("A small rain chance is worth a packable layer.")
+        if wind_kmh is not None and wind_kmh >= 25:
+            reasons.append(f"{wind_kmh:.0f} km/h wind favors secure fits over loose, flying hems.")
+        if uv_index is not None and uv_index >= 8 and 9 <= hour <= 16:
+            reasons.append("Very high UV favors coverage and a hat during daylight hours.")
+        if hour >= 18 and occasion == "event":
+            reasons.append("An evening formal event earns one extra layer for air-conditioned venues.")
+        if "funeral" in event_text.casefold() or "celebration of life" in event_text.casefold():
+            reasons.append("Somber occasion favors dark neutrals and restrained accessories.")
+        if not reasons:
+            reasons.append("Mild conditions let the occasion and your style lead.")
+        return reasons
+

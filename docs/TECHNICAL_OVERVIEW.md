@@ -1,395 +1,433 @@
 # Seamly — Technical Overview & Developer Change Guide
+### *(written so a high school student can understand it)*
 
-> **Purpose of this doc:** one place for the whole application structure,
-> every API used, the runtime flows, and — most importantly — **where to
-> change what** when another developer picks this up.
-> Codebase version covered: `1.8.2+17` (`pubspec.yaml`), API `1.7.0`
-> (`backend/app/main.py`). Branch `main`, repo `Stylorista/Stylorista-AI`.
-
----
-
-## 1. What this app is (30 seconds)
-
-Seamly is a privacy-conscious fashion MVP:
-
-- **Flutter** UI (mobile + web) for accounts, body-scan, color/style advice,
-  weather outfits, shop, news, profile hub.
-- **FastAPI** backend for auth, deterministic fit/color/style engines,
-  weather, news, shop-feed gating.
-- No biometric ML model, no checkout, no scraped social feeds. The scanner is
-  deterministic image geometry with strict framing checks (prototype only).
+> **What is this doc?** Think of it as the "owner's manual" for our app.
+> It explains what the app is, what each part does, how the parts talk to
+> each other, and — most importantly — **exactly which file to open when you
+> want to change something**.
+>
+> App version covered: `1.8.2+17`. Server version: `1.7.0`.
+> Main branch: `main`.
 
 ---
 
-## 2. Tech stack
+## 1. What is this app? (the 30-second version)
 
-| Layer | Tech | Key packages |
+Imagine a friendly fashion adviser living inside your phone. It's called
+**Seamly**, and it can:
+
+- Create your account and remember you (sign in with email or Google).
+- Guess your clothing size from your measurements or a body photo.
+- Tell you which colors look good on you (like "you're an Autumn!").
+- Suggest outfits based on the weather in your city.
+- Show fashion news and online shop listings.
+
+**Two big pieces make it work** — like a restaurant:
+
+- 🍽️ **The dining room = the Flutter app.** This is everything you see and
+  tap on your phone or in the browser. (Built with Flutter, a toolkit from
+  Google for making apps.)
+- 👨‍🍳 **The kitchen = the Python server.** This is a hidden computer that
+  does the thinking: checking passwords, guessing sizes, fetching weather.
+  Your phone sends it a note ("here's my photo, what size am I?") and it
+  sends back an answer. (Built with FastAPI, a popular Python tool for
+  servers.)
+
+Important honesty note: the body scanner is a **prototype**. It uses simple
+photo-measuring math, not a super-smart AI. It proves the idea works, but a
+real tailor should still double-check before you buy expensive clothes!
+
+---
+
+## 2. The ingredients (tech stack, in plain words)
+
+| Piece | Plain meaning | Nerdy name |
 |---|---|---|
-| UI | Flutter 3.44 / Dart 3.12, Material 3 | `camera`, `image_picker`, `http`, `shared_preferences`, `url_launcher`, `google_sign_in ^7.2.0` + `google_sign_in_web` |
-| API | FastAPI + Uvicorn, Pydantic v2 | `fastapi`, `uvicorn[standard]`, `pydantic`, `httpx`, `pillow`, `numpy`, `scikit-learn`, `psycopg[binary]`, `google-auth[requests]` |
-| DB | SQLite locally, PostgreSQL in prod | `sqlite3` stdlib, `psycopg` |
-| Hosting | Firebase Hosting (web `dist/`), Render (API) | `firebase.json` → `dist/`, `render.yaml` → `backend/` |
-| External data | Open-Meteo, wttr.in fallback, RSS/GDELT/Google News, optional Reddit + operator shop feed | `httpx` server-side only |
+| What you see | The phone/website screens | Flutter 3.44 + Dart 3.12 |
+| The kitchen | The hidden computer that answers questions | Python + FastAPI + Uvicorn |
+| The rulebook | A strict checklist that keeps messages tidy | Pydantic v2 |
+| The filing cabinet | Where accounts are saved (a simple file on your laptop, a stronger database online) | SQLite (local) / PostgreSQL (online) |
+| The stage | Where the website and kitchen live on the internet | Firebase Hosting (website) + Render (kitchen) |
+| Outside helpers | Free weather/news services our kitchen asks for info | Open-Meteo, wttr.in, Google News RSS, GDELT, publisher RSS feeds |
+
+Helpful add-ons inside the app: `camera` (take photos), `image_picker`
+(choose photos), `http` (send notes to the kitchen), `shared_preferences`
+(the phone's little sticky-note memory), `url_launcher` (open links),
+`google_sign_in` (the "Continue with Google" button).
 
 ---
 
-## 3. Repository structure
+## 3. Map of the whole project (where everything lives)
 
 ```text
-lib/
-  main.dart                  # runApp(SeamlyApp)
-  app.dart                   # AuthGate + SeamlyShell + nav (see §5)
-  theme/seamly_theme.dart    # colors + Material theme
+lib/   ← THE DINING ROOM (everything you see on screen)
+  main.dart                  ← the front door: opens the app
+  app.dart                   ← the host: checks your ticket (login),
+                               then shows the tabs (Home, Shop, Scan…)
+  theme/seamly_theme.dart    ← the interior designer: colors, fonts
   services/
-    seamly_api.dart          # ALL backend calls (single HTTP client)
-    session_store.dart       # SharedPreferences session cache
-    google_sign_in_service.dart  # GIS init + mobile authenticate()
-  features/                  # one file per screen (see §6)
-    auth_screen.dart         # sign-in / register + Google card
-    welcome_screen.dart      # one-time onboarding
-    home_screen.dart         # dashboard + weather
-    shop_screen.dart         # listings + fallback searches
-    camera_measurement_screen.dart  # scan flow (logic)
-    camera_capture_view.dart # scan viewfinder (dumb UI)
-    fashion_news_screen.dart
-    profile_screen.dart      # style hub + selfie accessories
-    measurements_screen.dart # manual tape form → size
-    color_analysis_screen.dart
-    season_style_screen.dart
-    account_screen.dart      # name/height/avatar + logout
-  widgets/
-    common.dart, seamly_header.dart, account_avatar.dart
-    google_web_button.dart (+ _web.dart GIS button, + _stub.dart mobile no-op)
+    seamly_api.dart          ← THE WAITER: the ONLY one allowed to carry
+                               notes between your phone and the kitchen
+    session_store.dart       ← sticky notes: remembers you after you close
+                               the app (saved login, city, size)
+    google_sign_in_service.dart ← the Google-button helper
+  features/                  ← one file = one screen
+    auth_screen.dart         ← login / register + Google button
+    welcome_screen.dart      ← first-time hello screen
+    home_screen.dart         ← dashboard + weather
+    shop_screen.dart         ← clothes for sale
+    camera_measurement_screen.dart ← body scan (the brains of the flow)
+    camera_capture_view.dart ← body scan (just the camera window, no brains)
+    fashion_news_screen.dart ← fashion news feed
+    profile_screen.dart      ← style hub + selfie accessories
+    measurements_screen.dart ← type your tape measurements → get a size
+    color_analysis_screen.dart ← pick skin/hair/eye colors → get your season
+    season_style_screen.dart ← pick climate + occasion → get an outfit
+    account_screen.dart      ← edit name/height/photo + log out
+  widgets/                   ← reusable LEGO bricks (headers, avatars,
+                               Google button, little cards)
 
-backend/
+backend/   ← THE KITCHEN (the hidden computer)
   app/
-    main.py              # FastAPI app + ALL routes (see §7)
-    schemas.py           # Pydantic contracts for every endpoint
-    account_store.py     # SQLite + Postgres accounts/sessions/measurements
-    google_auth.py       # Google ID-token verification
-    ai_engine.py         # size / color / style deterministic models
-    body_scan.py         # silhouette geometry estimator
-    appearance_analysis.py  # selfie color-direction
-    weather_service.py   # Open-Meteo + wttr.in + fashion tips
-    news_feed.py         # publisher RSS + GDELT + Google News + Reddit
-    shop_catalog.py      # approved-feed gating + domain allow-list
-    avatar.py            # account-picture sanitize (512px JPEG, strip EXIF)
-  tests/
-    test_api.py, test_account_settings.py, test_google_auth.py, ...
-  requirements.txt
-  .env.example           # GOOGLE_CLIENT_IDS, shop feed vars
-  Dockerfile, railway.json, fly.toml, oracle_setup.sh
+    main.py              ← the reception desk: receives every note, sends
+                           it to the right cook (ALL web addresses live here)
+    schemas.py           ← the rulebook: what each note must look like
+    account_store.py     ← the filing cabinet: accounts, login tickets
+    google_auth.py       ← the ID checker: "is this Google login real?"
+    ai_engine.py         ← three recipe books: size, color, style
+    body_scan.py         ← the measuring-tape robot (photo → numbers)
+    appearance_analysis.py ← the color-stylist robot (selfie → palette)
+    weather_service.py   ← the weather reporter (asks Open-Meteo outside)
+    news_feed.py         ← the newspaper collector (RSS + Google News…)
+    shop_catalog.py      ← the shop bouncer (only approved listings get in)
+    avatar.py            ← the photo cleaner (shrinks pictures, removes
+                           hidden location data)
+  tests/                 ← taste-testers: automatic checks that scream
+                           if a recipe breaks
+  requirements.txt       ← shopping list of Python ingredients
+  .env.example           ← example of secret settings (keys go here, never
+                           in the app itself!)
 
-web/index.html           # meta google-signin-client_id + manifest
-firebase.json / .firebaserc  # hosting public=dist, project seamly-web
-render.yaml              # Render python service, DATABASE_URL + GOOGLE_CLIENT_IDS
-build_web.ps1            # flutter build web → dist/ with dart-defines
-assets/images/           # home_hero.png, seamly_logo.png, partner_collage.png
-test/                    # widget_test.dart, account_settings_test.dart, camera_capture_test.dart
-docs/                    # PRODUCT_PLAN.md, AUDIT.md, SHOP_SOURCES.md + this file
+web/index.html           ← the website's front page (has the Google ID tag)
+firebase.json            ← "serve the website from the dist/ folder"
+render.yaml              ← "run the kitchen on Render.com"
+build_web.ps1            ← one-click script: build the website
+assets/images/           ← logo + decoration pictures
+test/                    ← automatic checks for the dining room (Flutter)
+docs/                    ← manuals like this one
 ```
 
----
-
-## 4. Backend API — full endpoint map
-
-Base URL is `API_BASE_URL` (Flutter dart-define, default
-`http://127.0.0.1:8000`). All JSON. Auth endpoints that need a session use
-`Authorization: Bearer <token>`.
-
-| Method | Path | Request | Response | Code file |
-|---|---|---|---|---|
-| GET | `/health` | — | `{status, service, version}` | `backend/app/main.py` |
-| POST | `/v1/auth/register` | `AccountRegisterRequest{name,email,password,height_cm,phone?,location?}` | `AccountAuthResponse{token,is_new_account,profile}` 201 | `main.py` + `account_store.py:register` |
-| POST | `/v1/auth/login` | `AccountLoginRequest{email,password}` | `AccountAuthResponse` | `main.py` + `account_store.py:login` |
-| POST | `/v1/auth/google` | `AccountGoogleLoginRequest{id_token}` | `AccountAuthResponse` (links by email) | `main.py` + `google_auth.py` + `account_store.py:login_with_google` |
-| POST | `/v1/auth/logout` | Bearer token | `{signed_out:true}` | `main.py` + `account_store.py:logout` |
-| GET | `/v1/account/profile` | Bearer | `AccountProfile` | `main.py` |
-| PUT | `/v1/account/profile` | Bearer + `AccountProfileUpdateRequest{name,height_cm,avatar_base64?}` | `AccountProfile` | `main.py` + `avatar.py` |
-| PUT | `/v1/account/measurements` | Bearer + `SavedMeasurementsRequest{measurements,size_label?,scan_confidence?}` | `AccountProfile` | `main.py` |
-| POST | `/v1/size/recommend` | `SizeRequest{measurements,fit_preference}` | `SizeResponse{recommended_size,alternatives,fit_notes}` | `ai_engine.py` |
-| POST | `/v1/color/analyze` | `ColorRequest{skin_hex,hair_hex,eye_hex}` | `ColorResponse{season,palette,neutrals,metals}` | `ai_engine.py` |
-| POST | `/v1/style/recommend` | `StyleRequest{climate,hemisphere,month,occasion,style,color_season,size_label?}` | `StyleResponse` | `ai_engine.py` |
-| POST | `/v1/body-scan/preview` | `BodyScanPreviewRequest{image_base64,consent_confirmed=true}` | `BodyScanPreviewResponse{ready,person_detected,guidance,bbox?}` | `body_scan.py` |
-| POST | `/v1/body-scan/analyze` | `BodyScanRequest{image_base64,reference_height_cm,consent_confirmed=true}` | `BodyScanResponse{measurements,scan_confidence,…}` | `body_scan.py` |
-| POST | `/v1/profile/analyze` | `AppearanceAnalysisRequest{image_base64,consent_confirmed=true}` | `AppearanceAnalysisResponse{color_season,accessories,…}` | `appearance_analysis.py` |
-| GET | `/v1/news/feed?category&limit` | `category=all\|y2k\|gothic\|alternative\|formal\|casual\|wedding\|streetwear\|vintage`, `limit 4–30` | `FashionNewsResponse{items,sources}` | `news_feed.py` |
-| GET | `/v1/shop/products?limit` | `limit 1–80` | `ShopProductsResponse{items,sources,catalog_mode}` | `shop_catalog.py` |
-| GET | `/v1/weather/home?city&size_label?&color_season?` | `city` min 2 chars | `WeatherHomeResponse{location,current,tomorrow,fashion[]}` | `weather_service.py` |
-
-Contracts live in `backend/app/schemas.py` (ranges e.g. height 120–230 cm,
-consent must be `true`, avatar ≤3M chars base64).
+**Golden rule for new developers:** the phone NEVER talks to the outside
+world directly. It only talks to our kitchen (`seamly_api.dart` → our
+server), and the *kitchen* talks to weather/news services. This keeps secrets
+safe.
 
 ---
 
-## 5. Third-party / external APIs used
+## 4. The kitchen's menu (every web address, plainly explained)
 
-| API | Where called | Key / auth | Notes |
-|---|---|---|---|
-| Google Sign-In (GIS + `google-auth` verify) | Flutter `google_sign_in` → backend `google_auth.py:verify_google_id_token` | Web OAuth client ID (`GOOGLE_CLIENT_IDS` backend, `GOOGLE_WEB_CLIENT_ID` Flutter, `web/index.html` meta) | No Firebase Auth. Backend checks `aud` + `email_verified`. See §8 |
-| Open-Meteo geocoding + forecast | `backend/app/weather_service.py` | No key | `geocoding-api.open-meteo.com/v1/search`, `api.open-meteo.com/v1/forecast`. 30-min cache, PH-biased |
-| wttr.in fallback | `weather_service.py:_fetch_wttr_fallback` | No key | Used when Open-Meteo fails |
-| Google News RSS | `news_feed.py:_fetch_google_news` | No key (public RSS) | `news.google.com/rss/search`. NOT a Cloud API |
-| GDELT DOC 2.0 | `news_feed.py` | No key | `api.gdeltproject.org/api/v2/doc/doc` |
-| Publisher RSS (Vogue, ELLE, Fashionista) | `news_feed.py` | No key | Hardcoded feed URLs at top of file |
-| Reddit search (optional) | `news_feed.py` | `REDDIT_ACCESS_TOKEN` env (approved OAuth token) | Skipped cleanly when unset |
-| Operator shop feed (optional) | `shop_catalog.py` | `FASHIONTECH_SHOP_CATALOG_URL` + `TOKEN`, or inline `FASHIONTECH_SHOP_CATALOG_JSON` | Strict Shopee/Lazada/Temu host allow-list; else `setup_required` fallback |
-| Firebase Hosting | `firebase.json`, `.firebaserc` (project `seamly-web`) | Firebase CLI login | Serves `dist/` only |
-| Render API host | `render.yaml` | `DATABASE_URL`, `GOOGLE_CLIENT_IDS` (sync:false) | `uvicorn app.main:app`, health `/health` |
+Your phone sends notes to addresses like `/v1/auth/login`. Here's the full
+menu. (Techy details in brackets for developers.)
 
-No Google Maps, Vision, or Firebase Auth. No payment API.
+| Address | What it means in plain words |
+|---|---|
+| `GET /health` | "Are you awake, kitchen?" → "Yes!" |
+| `POST /v1/auth/register` | "I'd like an account please" (send name, email, password, height) → you get a login ticket |
+| `POST /v1/auth/login` | "It's me again" (email + password) → login ticket |
+| `POST /v1/auth/google` | "Google says I'm me" (Google login token) → login ticket (reuses your account if the email matches) |
+| `POST /v1/auth/logout` | "I'm leaving, tear up my ticket" |
+| `GET /v1/account/profile` | "Show me my profile" (needs your ticket) |
+| `PUT /v1/account/profile` | "Update my name/height/photo" |
+| `PUT /v1/account/measurements` | "Save my new measurements" |
+| `POST /v1/size/recommend` | "Here are my numbers, what size am I?" |
+| `POST /v1/color/analyze` | "Here's my skin/hair/eye color, what's my season?" |
+| `POST /v1/style/recommend` | "It's hot and I'm going to work, what should I wear?" |
+| `POST /v1/outfits/plan` | "I'm going to a garden wedding Saturday at 4 PM — what should I wear?" (event text + date + time + style → forecast-driven outfit with reasons) |
+| `POST /v1/body-scan/preview` | "Quick look at my photo — am I standing right?" |
+| `POST /v1/body-scan/analyze` | "Measure my whole body from this photo" (needs permission checkbox!) |
+| `POST /v1/profile/analyze` | "What accessories match my selfie?" (needs permission checkbox!) |
+| `GET /v1/news/feed` | "Give me fashion news" (pick a category like wedding or vintage) |
+| `GET /v1/shop/products` | "Show me clothes for sale" (only approved listings!) |
+| `GET /v1/weather/home` | "What's the weather in my city, and what should I wear?" |
+
+**Login tickets explained:** when you sign in, the kitchen gives your phone
+a long secret code (a "token"). Your phone shows this ticket with every
+private request. Tickets expire after 30 days, like a monthly bus pass.
 
 ---
 
-## 6. Frontend flows
+## 5. Outside helpers (services we borrow, for free!)
 
-### 6.1 Boot → auth gate (`lib/app.dart`, `lib/main.dart`)
+| Helper | What it does | Needs a key? |
+|---|---|---|
+| Google Sign-In | The familiar "Continue with Google" button; our kitchen double-checks Google's ID card | YES — a free Google client ID (see §9) |
+| Open-Meteo | Free weather forecasts (no sign-up!) | No |
+| wttr.in | Backup weather reporter if Open-Meteo naps | No |
+| Google News RSS | Public fashion headlines feed | No (it's public, not a secret API) |
+| GDELT | A giant global news index researchers use | No |
+| Vogue / ELLE / Fashionista feeds | Fashion magazines' public article feeds | No |
+| Reddit search | Extra fashion stories | Only if you add an approved token; otherwise the app just skips it |
+| Shop feed | A list of real products from a shop partner YOU connect | Only if you set it up; otherwise the app honestly says "not connected yet" and shows search ideas |
+| Firebase Hosting | Puts our website on the internet | Your Firebase login |
+| Render | Runs our kitchen computer 24/7 | Your Render login |
+
+What we do **NOT** use: no Google Maps, no face-recognition AI, no payment
+system, no spying on private Instagram/Facebook.
+
+---
+
+## 6. How the app flows (follow a user around!)
+
+### 6.1 Opening the app (the host checks your ticket)
 
 ```text
-main() → SeamlyApp → AuthGate
-  1. _restoreSession() reads SharedPreferences (1s splash with logo)
-  2. not authenticated → AuthScreen
-  3. authenticated + first time → WelcomeScreen → NEXT
-  4. else → SeamlyShell (tabs)
-Background: _refreshAccountProfile(token) silently refreshes from GET /account/profile.
-Logout: POST /auth/logout (best-effort) + clear prefs + GIS signOut (best-effort).
+You tap the icon
+  → Logo splash for 1 second (it's secretly re-reading your sticky notes)
+  → Got a valid ticket? Come right in! 🎉
+  → First visit ever? Hello screen → tap NEXT
+  → No ticket? Login screen
+While you're inside, the app quietly refreshes your profile in the
+background. Logging out tears up your ticket on BOTH your phone and
+the kitchen computer.
 ```
+Lives in: `lib/main.dart` (front door) + `lib/app.dart` (the host, `AuthGate`).
 
-### 6.2 Auth (`lib/features/auth_screen.dart`)
+### 6.2 Logging in (two doors, same house)
 
-- Email form (`_AuthCard`): sign-in vs register toggle, 8-char password rule,
-  register hardcodes `heightCm: 165` (fixed later in Profile).
-- Google card (`_GoogleCard` below the form):
-  - Web: GIS `renderButton()` (`widgets/google_web_button_web.dart`) listens
-    to `authenticationEvents` → `POST /v1/auth/google`.
-  - Mobile/desktop: `Continue with Google` →
-    `GoogleSignInService.signInWithGoogle()` (`authenticate()`) → same endpoint.
-- Success: `AccountSession.fromApi(response)` → `AuthGate._authenticate` →
-  caches in `PreferencesSessionStore` (`seamly.*` keys).
+- **Email door:** type email + password (8+ characters). New accounts start
+  with height 165 cm — you'll fix it later in your profile.
+- **Google door:** tap the Google button. On the website it's Google's own
+  button; on phones our app asks Google, gets an ID card, and hands it to
+  our kitchen. The kitchen calls Google to verify the card is real, then
+  finds your account **by email** — so your old password account and your
+  Google login become ONE account, not two!
+- After either door: your ticket + profile are saved on sticky notes
+  (`SharedPreferences`), so you stay logged in.
 
-### 6.3 Navigation (`SeamlyShell` in `lib/app.dart`)
+Lives in: `lib/features/auth_screen.dart` + `lib/services/seamly_api.dart`
+(waiter) + `backend/app/google_auth.py` (ID checker).
 
-Indexed screens (bottom bar on mobile, rail on ≥900px):
+### 6.3 The tabs (rooms of the restaurant)
 
-| Tab | Screen index | File |
+Bottom bar on phones, side bar on wide computers. The big round camera
+button in the middle is the body scanner!
+
+| Tab | Screen | Plain job |
 |---|---|---|
-| Home | 0 | `home_screen.dart` |
-| Shop | 1 | `shop_screen.dart` |
-| Scan (center FAB) | 2 | `camera_measurement_screen.dart` |
-| News | 3 | `fashion_news_screen.dart` |
-| Profile hub | 4 | `profile_screen.dart` |
-| (pushed) Measurements | 5 | `measurements_screen.dart` |
-| (pushed) Color | 6 | `color_analysis_screen.dart` |
-| (pushed) Style | 7 | `season_style_screen.dart` |
-| (pushed) Account | — | `account_screen.dart` |
+| Home | `home_screen.dart` | Weather in your city + "what to wear" teaser |
+| Shop | `shop_screen.dart` | Real listings (or honest search ideas) |
+| Scan 📷 | `camera_measurement_screen.dart` | Body photo → measurements |
+| News | `fashion_news_screen.dart` | Fashion headlines by category |
+| Profile | `profile_screen.dart` | Style hub + selfie accessories |
+| (hidden) Measurements | `measurements_screen.dart` | Type tape numbers → size |
+| (hidden) Color | `color_analysis_screen.dart` | Pick colors → your season |
+| (hidden) Style | `season_style_screen.dart` | Pick climate/occasion → outfit |
+| (hidden) Account | `account_screen.dart` | Edit name/height/photo, log out |
 
-Shared state in shell: `_sizeLabel`, `_colorSeason`, `_scannedMeasurements`,
-`referenceHeightCm`. Scan save → `recommendSize` → `saveAccountMeasurements` →
-`sessionStore.saveMeasurementProfile`.
+The app remembers three shared things everywhere: your **size**, your
+**color season**, and your **measurements**. A scan updates all three at once.
 
-### 6.4 Feature flows (screen → endpoint)
+### 6.4 Each feature, super simply
 
-- **Manual size:** `measurements_screen.dart` (11 tape fields + fit
-  segmented) → `POST /v1/size/recommend`.
-- **Color:** `color_analysis_screen.dart` (skin/hair/eye swatches) →
-  `POST /v1/color/analyze` → season palette.
-- **Style:** `season_style_screen.dart` (climate/hemisphere/occasion/style) →
-  `POST /v1/style/recommend`.
-- **Body scan:** `camera_measurement_screen.dart` (consent + height gate →
-  live `camera` preview loop → capture via `camera` or `image_picker`) →
-  `POST /v1/body-scan/preview` (guidance) then
-  `POST /v1/body-scan/analyze` (+ `referenceHeightCm`) and parallel
-  `POST /v1/profile/analyze` for palette. UI only in `camera_capture_view.dart`.
-- **Weather:** `home_screen.dart` (city persisted as `seamly.city`) →
-  `GET /v1/weather/home`.
-- **Shop:** `shop_screen.dart` → `GET /v1/shop/products`; exact listings only
-  when operator feed connected, else image-free Shopee/Lazada/Temu search
-  ideas + `url_launcher` deep links.
-- **News:** `fashion_news_screen.dart` → `GET /v1/news/feed`; likes are local
-  stubs, share opens original URL.
-- **Account:** `account_screen.dart` → `PUT /v1/account/profile`
-  (avatar ≤2 MB JPEG/PNG/WebP, resized 512px, EXIF stripped in `avatar.py`).
+- **Manual size** (`measurements_screen.dart`): type 11 numbers (height,
+  chest, waist…) → kitchen answers with a size like "M" + confidence.
+- **Color** (`color_analysis_screen.dart`): tap the closest skin/hair/eye
+  swatches → kitchen says "You're an Autumn!" + color palette.
+- **Style** (`season_style_screen.dart`): pick climate + occasion + vibe →
+  kitchen writes you a full outfit recipe.
+- **Body scan** (`camera_measurement_screen.dart`): check two permission
+  boxes → stand in good light, full body in frame → live preview says
+  "move left!" → snap → kitchen measures you + suggests a palette. The
+  camera window itself (`camera_capture_view.dart`) is "dumb" — it only
+  displays, all thinking happens in the other file.
+- **Weather** (`home_screen.dart`): your city is remembered; pull down to
+  refresh, like email. Above the weather sits the **Plan your outfit** card:
+  type an event (21 shortcut chips), pick date + time, pick or type a style
+  → the app returns a forecast-driven outfit with reasons
+  (`POST /v1/outfits/plan`), personalized by your scan size and color.
+- **Shop** (`shop_screen.dart`): only shows listings from an approved list
+  with matching photos (no fake products!). Otherwise it shows
+  "search ideas" that open Shopee/Lazada/Temu in your browser.
+- **News** (`fashion_news_screen.dart`): pick Y2K, wedding, vintage…; hearts
+  are just for fun (saved on your phone only).
+- **Account** (`account_screen.dart`): change name/height/photo. Photos are
+  shrunk to small size and hidden location data is scrubbed. ⚠️ Changing
+  your height deletes old scan results (because they'd be wrong now!).
 
 ---
 
-## 7. Backend internals (where logic lives)
+## 7. The kitchen robots (what each Python file does)
 
-| Module | What it does | Tune here |
+| Robot (file) | Job in plain words | Tweak it here |
 |---|---|---|
-| `ai_engine.py` | `SeamlyEngine`: sklearn size model (`SIZE_CENTRES` + RandomForest demo), hex→season color rules + `PALETTES`, climate/month style templates | Size centres, palette hexes, style copy |
-| `body_scan.py` | `BodyScanEstimator.preview/analyze`: decode → lighting check → foreground mask → largest component → person-shape gate → widths at heights → cm via `reference_height_cm` | Lighting thresholds, bbox gates, cm ratios |
-| `appearance_analysis.py` | `AppearanceAnalyzer.analyze`: tone sampling → warmth/brightness → season + `_ACCESSORIES` map | Accessory copy, season boundaries |
-| `weather_service.py` | Geocode (PH province seats) → forecast → `_fashion_tips` | `PH_PROVINCE_SEATS`, tip text, cache TTL |
-| `news_feed.py` | Fetch → merge/dedupe → OG-image enrich | Feed URL list, category map, GDELT query |
-| `shop_catalog.py` | Load operator JSON → validate hosts/sizes → rank | `_MARKETPLACE_HOSTS`, validation rules |
-| `account_store.py` | `register/login/login_with_google/profile/save_measurements/update_profile/logout`; PBKDF2-SHA256 310k, 30-day tokens (sha256-hashed) | Token TTL, default height 165, schema |
-| `google_auth.py` | `verify_google_id_token`: cert verify + `aud` + `email_verified` | Allowed client IDs |
-| `schemas.py` | Every request/response + validators | Ranges, new fields |
-| `main.py` | Route wiring + CORS (`CORS_ALLOWED_ORIGINS`) | Origins, new routes |
+| `ai_engine.py` | 3 recipe books: size guesser, color season finder, outfit writer | The size averages, color palettes, outfit texts |
+| `body_scan.py` | Measuring-tape robot: finds your silhouette, checks the lighting, converts photo widths to centimeters using your height | Light sensitivity, how strict the "stand straight!" check is |
+| `appearance_analysis.py` | Selfie stylist: samples skin tone → picks season + accessory ideas | Accessory suggestions, season boundaries |
+| `weather_service.py` | Weather reporter: finds your city (extra smart about Philippine provinces!), fetches forecast, writes "wear linen today" tips | City list, tip texts |
+| `news_feed.py` | Newspaper collector: grabs articles, removes duplicates, finds pictures | Which magazines, which categories |
+| `shop_catalog.py` | Shop bouncer: ONLY lets in listings with matching real photos from Shopee/Lazada/Temu | Which shops are allowed, validation rules |
+| `account_store.py` | Filing cabinet: saves accounts (passwords are scrambled with heavy math called PBKDF2, 310,000 rounds!), hands out 30-day tickets | Ticket lifetime, default height |
+| `google_auth.py` | ID checker: calls Google to verify login cards | Which Google IDs are allowed |
+| `schemas.py` | Rulebook: every note's required shape (e.g. height must be 120–230 cm, photo analysis needs the permission box checked) | Allowed ranges, new fields |
+| `main.py` | Reception desk: routes every note + decides which websites may call (CORS) | Website permissions, new addresses |
 
-Storage tables (SQLite file `backend/data/seamly.db` or Postgres when
-`DATABASE_URL` set): `users(id,name,email UNIQUE,password_hash,height_cm,
-phone,location,created_at,google_sub UNIQUE)`, `sessions(token_hash,user_id,
-expires_at)`, `measurement_profiles(user_id,measurements_json,size_label,
-…)`, `account_pictures(user_id,avatar_base64)`.
-
----
-
-## 8. Auth detail (both methods)
-
-- **Password:** salted PBKDF2-SHA256 stored; raw password never kept.
-  `register` → 30-day token; `login` → new token; `profile_for_token` rejects
-  expired.
-- **Google:** Flutter gets Google `id_token` (GIS on web, `authenticate()` on
-  mobile) → `POST /v1/auth/google` → backend verifies signature/audience via
-  Google certs → `login_with_google(sub,email,name)`:
-  1. existing `google_sub` → login,
-  2. else existing email → link `google_sub` + login (`is_new=false`),
-  3. else create user (random password hash, height 165) (`is_new=true`).
-- Changing height deletes saved measurements (both API + UI enforce
-  height-match on scan save).
+Filing cabinet drawers (database tables): `users` (who you are),
+`sessions` (active tickets), `measurement_profiles` (saved body numbers),
+`account_pictures` (your photo). Locally it's one file
+(`backend/data/seamly.db`); online it's a stronger Postgres database.
 
 ---
 
-## 9. Config & environments
+## 8. Settings & secret keys (the boring-but-important part)
 
-| Var / flag | Where set | Used in |
+| Setting | Where you set it | What reads it |
 |---|---|---|
-| `API_BASE_URL` (dart-define) | `build_web.ps1 -ApiBaseUrl`, `flutter run --dart-define` | `lib/services/seamly_api.dart` |
-| `GOOGLE_WEB_CLIENT_ID` (dart-define) | `build_web.ps1 -GoogleWebClientId` | `google_sign_in_service.dart`, note in `_GoogleCard` |
-| `google-signin-client_id` meta | `web/index.html` (also copy to `dist/index.html` on build) | GIS web SDK |
-| `GOOGLE_CLIENT_IDS` (or legacy `GOOGLE_WEB_CLIENT_ID`) | `backend/.env.example`, Render dashboard | `backend/app/google_auth.py` |
-| `DATABASE_URL` | Render / env | `account_store.py:create_account_store` (Postgres) vs SQLite |
-| `STYLORISTA_DB_PATH` | env (optional) | SQLite file location |
-| `CORS_ALLOWED_ORIGINS` | env (comma list) | `backend/app/main.py` (default allows localhost + one chatgpt.site origin) |
-| `FASHIONTECH_SHOP_CATALOG_URL` / `_TOKEN` / `_JSON` | env | `shop_catalog.py` |
-| `REDDIT_ACCESS_TOKEN` | env | `news_feed.py` |
-| `seamly.*` SharedPreferences keys | device | `session_store.dart` (`seamly.authenticated`, `seamly.account_token`, `seamly.city`, …) |
+| `API_BASE_URL` | When starting the app (e.g. `--dart-define=API_BASE_URL=...`) | The waiter (`seamly_api.dart`) — "which kitchen do I talk to?" |
+| `GOOGLE_WEB_CLIENT_ID` | When building the app | Google button helper — "which Google ID is mine?" |
+| Google tag in `web/index.html` | Edit the file (paste your ID) | Google's website button |
+| `GOOGLE_CLIENT_IDS` | Server settings (Render dashboard) | ID checker (`google_auth.py`) |
+| `DATABASE_URL` | Server settings | Filing cabinet — "use the strong database" (if empty, uses the simple file) |
+| `CORS_ALLOWED_ORIGINS` | Server settings | Reception desk — "which websites may order food?" |
+| Shop feed keys (`FASHIONTECH_SHOP_*`) | Server settings | Shop bouncer — "where's the approved product list?" |
+| `REDDIT_ACCESS_TOKEN` | Server settings | Newspaper collector — bonus stories (optional) |
+| `seamly.*` sticky notes | Automatic on your phone | Session memory (login, city, size…) |
+
+**Safety rule:** secret keys live ONLY on the kitchen computer (server
+settings). NEVER paste them into the phone app — anyone can read app code!
 
 ---
 
-## 10. Run / verify / deploy
+## 9. Everyday commands (copy-paste recipes)
 
 ```powershell
-# API
-cd backend
+# Start the kitchen (from the backend/ folder)
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --reload   # http://127.0.0.1:8000 + /docs
+python -m uvicorn app.main:app --reload
+# Open http://127.0.0.1:8000 and http://127.0.0.1:8000/docs (try the menu!)
 
-# Flutter (from repo root)
+# Start the dining room (from the project folder)
 flutter pub get
-flutter run -d chrome --web-hostname localhost --web-port 7357 --dart-define=API_BASE_URL=http://127.0.0.1:8000 --dart-define=GOOGLE_WEB_CLIENT_ID=YOUR_ID.apps.googleusercontent.com
+flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000
+# (Android emulator? use http://10.0.2.2:8000 instead!)
+
+# Health checks (do these before every commit!)
 flutter analyze
 flutter test
 cd backend; python -m pytest
 
-# Web release → Firebase
-powershell -File build_web.ps1 -ApiBaseUrl "https://YOUR-API" -GoogleWebClientId "YOUR_ID.apps.googleusercontent.com"
+# Put the website online
+powershell -File build_web.ps1 -ApiBaseUrl "https://YOUR-KITCHEN" -GoogleWebClientId "YOUR-ID.apps.googleusercontent.com"
 firebase deploy --only hosting
 ```
 
-Android emulator uses `http://10.0.2.2:8000` as `API_BASE_URL`.
+---
+
+## 10. 🛠️ DEVELOPER CHANGE GUIDE — "I want to change X, where do I go?"
+
+> **How to read this:** left = your wish in plain words. Right = exact
+> file(s) to open + what to touch. Always run the health checks (§9) after!
+
+### Looks & words (design, text, brand)
+
+| I want to… | Open this and change that |
+|---|---|
+| Change colors, fonts, the whole vibe | `lib/theme/seamly_theme.dart` — the `SeamlyColors` paint box + `buildSeamlyTheme()` |
+| Change the app name or version | `pubspec.yaml` (name + version), `web/manifest.json`, `web/index.html` (title) |
+| Swap the logo / background photos | `assets/images/` folder + the assets list in `pubspec.yaml` |
+| Rewrite the welcome screen | `lib/features/welcome_screen.dart` |
+| Rewrite the terms & conditions popup | `lib/features/auth_screen.dart` (search "Terms") |
+| Add a brand-new tab | `lib/app.dart`: add your screen to the `screens` list + both menus (`_BottomNavigation` for phones, `_DesktopNavigation` for computers) + create your screen file in `lib/features/` |
+
+### Accounts & login
+
+| I want to… | Open this and change that |
+|---|---|
+| Change password rules ("must be 8+ characters") | `lib/features/auth_screen.dart` (the form check) AND `backend/app/schemas.py` (`AccountRegisterRequest`) — change BOTH or they'll disagree! |
+| Change the starting height (165 cm) | `lib/features/auth_screen.dart` (search `165`) AND `backend/app/account_store.py` (`login_with_google`) |
+| Make login tickets last longer/shorter than 30 days | `backend/app/account_store.py` → `_create_session` → `timedelta(days=30)` |
+| Set up Google login with my own ID | Server setting `GOOGLE_CLIENT_IDS` + app build flag `GOOGLE_WEB_CLIENT_ID` + paste ID into `web/index.html` meta tag |
+| Hide the Google button | `lib/features/auth_screen.dart` → `_GoogleCard` |
+| Change photo rules (size/format) | `backend/app/avatar.py` (`normalize_avatar`) + `lib/features/account_screen.dart` (picker limit) |
+
+### Size / color / outfits (the smart stuff)
+
+| I want to… | Open this and change that |
+|---|---|
+| Make size guesses smarter/different | `backend/app/ai_engine.py` (size averages + guessing model) + allowed ranges in `backend/app/schemas.py` (`Measurements`) |
+| Add/remove a measurement box (e.g. "arm length") | `lib/features/measurements_screen.dart` (the form) + `backend/app/schemas.py` (`Measurements`) |
+| Change color seasons or palettes | `backend/app/ai_engine.py` (`PALETTES`) + the swatch colors in `lib/features/color_analysis_screen.dart` |
+| Rewrite outfit suggestions | `backend/app/ai_engine.py` (`recommend_style`) + the dropdowns in `lib/features/season_style_screen.dart` |
+| Make the body scanner stricter/looser | `backend/app/body_scan.py` (lighting + "are you standing right?" checks) + instructions in `lib/features/camera_measurement_screen.dart` |
+| Change selfie accessory ideas | `backend/app/appearance_analysis.py` (`_ACCESSORIES`) + display in `lib/features/profile_screen.dart` |
+
+### Weather / news / shop
+
+| I want to… | Open this and change that |
+|---|---|
+| Change the default city or outfit tips | `backend/app/weather_service.py` (province list, tip texts); the app's default + memory in `lib/features/home_screen.dart` |
+| Switch weather provider | `backend/app/weather_service.py` (`fetch` — the Open-Meteo web addresses) |
+| Add/remove a news source or category | `backend/app/news_feed.py` (magazine addresses at the top, category list) + the chips in `lib/features/fashion_news_screen.dart`; Reddit needs the `REDDIT_ACCESS_TOKEN` setting |
+| Add a shop or change what's sold | Connect a product list via `FASHIONTECH_SHOP_*` settings (must match the shape in `schemas.py:ShopProduct`); allowed shops in `backend/app/shop_catalog.py`; ranking in `lib/features/shop_screen.dart` |
+| Change how product links open | `lib/features/shop_screen.dart` + `fashion_news_screen.dart` (the `url_launcher` calls) |
+
+### Kitchen / database / internet
+
+| I want to… | Open this and change that |
+|---|---|
+| Add a NEW web address (endpoint) | 5 steps, always in order: ① `backend/app/schemas.py` (the note's shape) → ② `backend/app/main.py` (the route) → ③ `lib/services/seamly_api.dart` (waiter's new method) → ④ your screen file → ⑤ tests! |
+| Change allowed number ranges | `backend/app/schemas.py` only (the phone copies its messages from here) |
+| Let another website use the kitchen (CORS) | `backend/app/main.py` (`CORS_ALLOWED_ORIGINS`) |
+| Add a database column/table | `backend/app/account_store.py` — follow the existing `google_sub` pattern (simple-file version AND Postgres version, both!) |
+| Move to the strong online database | Set the `DATABASE_URL` setting — tables build themselves |
+| Change where the website/API live | `firebase.json` (website folder), `.firebaserc` (project name), `render.yaml` (kitchen settings), `build_web.ps1` (defaults) |
+| Release a new version number | `pubspec.yaml` (`version: x.y.z+N`) + `backend/app/main.py` (`version=`) |
+
+### Tests to update together (don't forget!)
+
+| I changed… | I must also update… |
+|---|---|
+| Login / accounts | `backend/tests/test_google_auth.py`, `test_account_settings.py`, `test/widget_test.dart`, `test/account_settings_test.dart` |
+| Scanner / camera screen | `test/camera_capture_test.dart` + scan cases in `backend/tests/test_api.py` |
+| News / shop / weather | matching sections in `backend/tests/test_api.py` |
 
 ---
 
-## 11. Developer change guide — “I want to change X → edit Y”
+## 11. Privacy promises (never break these!)
 
-### Product / UI copy & brand
+1. 📷 **Body/selfie photos are never saved.** They're examined in memory and
+   thrown away — like a doctor who forgets your face after the checkup. The
+   permission checkbox is REQUIRED.
+2. 🖼️ **Profile photos are separate.** Only saved when YOU tap Save. Shrunk
+   small, location data scrubbed, shown only to you. Delete = really deleted.
+3. 🔑 **Passwords are scrambled** with heavy math (PBKDF2, 310,000 rounds).
+   Even we can't read them.
+4. 📩 **Google logins are verified** with Google directly — we never trust
+   an email just because the phone says so.
+5. 📏 **Changing height erases old scans** — because old numbers would now
+   be lies!
 
-| Want | Edit |
-|---|---|
-| App name, tagline, colors, fonts | `lib/theme/seamly_theme.dart` (`SeamlyColors`, `buildSeamlyTheme`), `pubspec.yaml` (`name`, `version`), `web/manifest.json`, `web/index.html` title/meta |
-| Logo / hero images | `assets/images/` + `pubspec.yaml` assets block |
-| Onboarding text | `lib/features/welcome_screen.dart` |
-| Terms text | `lib/features/auth_screen.dart` terms dialog |
-| Bottom tabs / add a tab | `lib/app.dart` (`screens` list, `_BottomNavigation._destinations`, `_DesktopNavigation`) + new file in `lib/features/` |
+## 12. Honest limitations (read before launch day!)
 
-### Auth & accounts
+- The scanner is a **prototype, not a tailor**. It needs testing against
+  real tape measurements before anyone promises accuracy.
+- "Seamly" is a **working name** — check trademarks, app-store names, and
+  domains before printing business cards.
+- Free online databases can expire — get a permanent one before real users
+  arrive.
+- iPhones currently use the website version; a real App Store release needs
+  Apple signing + a Mac computer.
 
-| Want | Edit |
-|---|---|
-| Email validation / password rules | `lib/features/auth_screen.dart` validators + `backend/app/schemas.py` (`AccountRegisterRequest`) |
-| Default height for new accounts | `lib/features/auth_screen.dart` (`heightCm: 165`) + `backend/app/account_store.py:login_with_google` (165) |
-| Token lifetime (30 days) | `backend/app/account_store.py:_create_session` (`timedelta(days=30)`) |
-| Google client IDs / disable Google | Backend `GOOGLE_CLIENT_IDS` env (`google_auth.py`); Flutter `--dart-define=GOOGLE_WEB_CLIENT_ID` + `web/index.html` meta; hide via `_GoogleCard` |
-| Link-vs-block same-email Google | `backend/app/account_store.py:login_with_google` |
-| Avatar size / format | `backend/app/avatar.py:normalize_avatar` + `lib/features/account_screen.dart` picker limit |
+## 13. Quick answers (FAQ)
 
-### Fit / color / style engines
-
-| Want | Edit |
-|---|---|
-| Size recommendation logic | `backend/app/ai_engine.py` (`SIZE_CENTRES`, `_build_size_model`, `_fit_notes`) + ranges in `schemas.py:Measurements` |
-| Manual measurement fields | `lib/features/measurements_screen.dart` + `schemas.py:Measurements` |
-| Color season rules / palettes | `backend/app/ai_engine.py` (`PALETTES`, `_color_features`) + swatches in `lib/features/color_analysis_screen.dart` |
-| Outfit templates | `backend/app/ai_engine.py:recommend_style` + form in `lib/features/season_style_screen.dart` |
-| Scan strictness / guidance copy | `backend/app/body_scan.py` (lighting/person gates) + `lib/features/camera_measurement_screen.dart` instructions |
-| Selfie accessory suggestions | `backend/app/appearance_analysis.py` (`_ACCESSORIES`) + `lib/features/profile_screen.dart` |
-
-### Weather / news / shop (external data)
-
-| Want | Edit |
-|---|---|
-| Default city, PH bias, fashion tips | `backend/app/weather_service.py` (`DEFAULT_COUNTRY_BIAS`, `PH_PROVINCE_SEATS`, `_fashion_tips`); city default + cache key in `lib/features/home_screen.dart` |
-| Weather provider / add API key | `weather_service.py:fetch` (Open-Meteo URLs, wttr fallback) |
-| News sources / categories | `backend/app/news_feed.py` (feed URL tuple, `_fetch_gdelt`, category list) + chips in `lib/features/fashion_news_screen.dart`; Reddit via `REDDIT_ACCESS_TOKEN` |
-| Shop listings / add marketplace | Operator JSON feed (env `FASHIONTECH_SHOP_*`) must match `schemas.py:ShopProduct`; allow-list in `backend/app/shop_catalog.py:_MARKETPLACE_HOSTS`; UI ranking in `lib/features/shop_screen.dart` |
-| Open product links in-app vs browser | `lib/features/shop_screen.dart` + `fashion_news_screen.dart` (`url_launcher`) |
-
-### API / data / infra
-
-| Want | Edit |
-|---|---|
-| Add new endpoint | `backend/app/schemas.py` (models) → `backend/app/main.py` (route) → `lib/services/seamly_api.dart` (client method) → screen → `backend/tests/test_*.py` + `test/widget_test.dart` |
-| Change validation ranges | `backend/app/schemas.py` only (frontend mirrors messages) |
-| Change CORS | `backend/app/main.py` (`CORS_ALLOWED_ORIGINS`, `allow_origin_regex`) |
-| Change DB (add column/table) | `backend/app/account_store.py` (`_ensure_schema` + `_ensure_google_column` pattern for SQLite, `ALTER … IF NOT EXISTS` for Postgres) — must handle both stores |
-| Switch SQLite → Postgres | Set `DATABASE_URL`; tables auto-created by `PostgresAccountStore` |
-| Change hosting / API URL | `firebase.json` (public dir), `.firebaserc` (project), `render.yaml` (service/env), `build_web.ps1` defaults |
-| Bump version | `pubspec.yaml` (`version: x.y.z+N`) + `backend/app/main.py` (`version=`) |
-
-### Tests to update together
-
-| Changed | Update |
-|---|---|
-| Auth / account | `backend/tests/test_google_auth.py`, `test_account_settings.py`, `test/widget_test.dart` (auth flows), `test/account_settings_test.dart` |
-| Scan / camera UI | `test/camera_capture_test.dart`, `backend/tests/test_api.py` (scan cases) |
-| News/shop/weather | `backend/tests/test_api.py` (feed/catalog/weather sections) |
-
----
-
-## 12. Privacy boundaries (do not regress)
-
-- Scan/selfie photos: in-memory only, consent checkbox required
-  (`consent_confirmed` validator), never stored or trained on. Only a passing
-  scan may update measurements.
-- Account pictures: explicit Save, 512px JPEG re-encode, EXIF stripped,
-  returned only with auth; Remove+Save deletes; logout clears device cache and
-  revokes server token.
-- No raw passwords stored (PBKDF2 hashes only). Google `id_token` is verified
-  server-side — never trust client email alone.
-
-## 13. Known limitations / before public launch
-
-- Scanner is **not** validated for tailoring, purchasing, or biometrics
-  (README prototype disclaimer). Needs ground-truth tape evaluation before any
-  accuracy claim.
-- `Seamly` is a working name — needs trademark / store / domain clearance.
-- Render free Postgres expires (see README) — use durable DB for real users.
-- iOS is web-via-Safari only; native release needs Apple signing + Xcode build.
-
-## 14. Quick FAQ
-
-- **Where is the single source for backend calls?**
-  `lib/services/seamly_api.dart` — every screen goes through it.
-- **Where do I add a tab?** `lib/app.dart` screens list + both navigations.
-- **Where do I add an endpoint?** `schemas.py` → `main.py` → `seamly_api.dart`
-  → screen → tests.
-- **Google not working locally?** Check meta in `web/index.html`, dart-define
-  ID, Render `GOOGLE_CLIENT_IDS`, and Authorized JS origins include your
-  `localhost:PORT` and hosting domain.
-- **Shop shows “setup required”?** No operator feed connected — set
-  `FASHIONTECH_SHOP_CATALOG_JSON/URL` (see `docs/SHOP_SOURCES.md`).
-- **News missing Reddit?** Set approved `REDDIT_ACCESS_TOKEN`; otherwise
-  skipped by design.
+- **"Where do phone-to-kitchen calls live?"** → One file:
+  `lib/services/seamly_api.dart`. Every screen orders through this waiter.
+- **"Where do I add a tab?"** → `lib/app.dart` (screen list + both menus).
+- **"Where do I add a web address?"** → rulebook → reception desk → waiter
+  → screen → tests (§10, "kitchen" table).
+- **"Google login broken on my laptop?"** → check 3 things: the tag in
+  `web/index.html`, the build flag ID, the server's `GOOGLE_CLIENT_IDS` —
+  plus Google's "allowed websites" list must include your address.
+- **"Shop says 'setup required'?"** → no product list connected yet — set
+  `FASHIONTECH_SHOP_CATALOG_JSON` (see `docs/SHOP_SOURCES.md`).
+- **"No Reddit stories?"** → normal without a token — skipped on purpose.
