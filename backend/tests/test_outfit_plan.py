@@ -145,3 +145,58 @@ def test_outfit_plan_normals_estimate_has_numbers(monkeypatch) -> None:
     assert "averages" in body["reasons"][0]
     assert "climate averages" in body["disclaimer"]
     assert body["confidence"] == 0.62
+
+
+def test_inspiration_query_builder() -> None:
+    from app.outfit_images import build_inspiration_query
+
+    assert (
+        build_inspiration_query(
+            style="classic",
+            pieces=["draped midi dress", "low heeled sandals"],
+            occasion="event",
+        )
+        == "classic draped midi dress low heeled sandals outfit"
+    )
+    assert (
+        build_inspiration_query(
+            style="minimal", pieces=["vented overshirt"], occasion="work"
+        )
+        == "vented overshirt outfit office"
+    )
+
+
+def test_outfit_plan_includes_inspiration_images(monkeypatch) -> None:
+    async def fake_images(query: str, per_page: int = 3):
+        assert "outfit" in query
+        return [
+            {
+                "image_url": "https://images.pexels.com/pic.jpg",
+                "photographer": "Test Shooter",
+                "photographer_url": "https://www.pexels.com/test",
+                "alt": "Classic outfit inspiration",
+            }
+        ]
+
+    monkeypatch.setattr(
+        main_module.outfit_image_service, "fetch_images", fake_images
+    )
+    _patch_moment(monkeypatch)
+    response = client.post("/v1/outfits/plan", json=_payload())
+    assert response.status_code == 200
+    images = response.json()["inspiration_images"]
+    assert len(images) == 1
+    assert images[0]["photographer"] == "Test Shooter"
+
+
+def test_outfit_plan_works_without_image_key(monkeypatch) -> None:
+    async def fake_images(query: str, per_page: int = 3):
+        return []
+
+    monkeypatch.setattr(
+        main_module.outfit_image_service, "fetch_images", fake_images
+    )
+    _patch_moment(monkeypatch)
+    response = client.post("/v1/outfits/plan", json=_payload())
+    assert response.status_code == 200
+    assert response.json()["inspiration_images"] == []

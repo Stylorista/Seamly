@@ -168,6 +168,7 @@ private request. Tickets expire after 30 days, like a monthly bus pass.
 | Vogue / ELLE / Fashionista feeds | Fashion magazines' public article feeds | No |
 | Reddit search | Extra fashion stories | Only if you add an approved token; otherwise the app just skips it |
 | Shop feed | A list of real products from a shop partner YOU connect | Only if you set it up; otherwise the app honestly says "not connected yet" and shows search ideas |
+| Pexels photos | Style-inspiration photos in the outfit planner, labeled "not actual products" (never listings) | Free key in `PEXELS_API_KEY`; without it the planner just shows no photos |
 | Firebase Hosting | Puts our website on the internet | Your Firebase login |
 | Render | Runs our kitchen computer 24/7 | Your Render login |
 

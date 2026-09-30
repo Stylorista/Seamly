@@ -258,6 +258,13 @@ class OutfitPlanWeather(BaseModel):
     is_forecast: bool
 
 
+class OutfitInspirationImage(BaseModel):
+    image_url: str
+    photographer: str
+    photographer_url: str
+    alt: str
+
+
 class OutfitPlanResponse(BaseModel):
     event_text: str
     occasion: str
@@ -276,6 +283,7 @@ class OutfitPlanResponse(BaseModel):
     fit_notes: list[str] = Field(default_factory=list)
     reasons: list[str]
     confidence: float = Field(ge=0, le=1)
+    inspiration_images: list[OutfitInspirationImage] = Field(default_factory=list)
     model_version: str
     disclaimer: str
 

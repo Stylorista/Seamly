@@ -844,6 +844,11 @@ class _EventOutfitResult extends StatelessWidget {
     final fitNotes =
         (result['fit_notes'] as List?)?.cast<String>() ?? [];
     final palette = (result['palette'] as List?)?.cast<String>() ?? [];
+    final inspiration =
+        (result['inspiration_images'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .toList() ??
+        [];
     final isForecast = weather['is_forecast'] == true;
     final temp = weather['temperature_c'];
     final feels = weather['feels_like_c'];
@@ -957,6 +962,52 @@ class _EventOutfitResult extends StatelessWidget {
                 style: const TextStyle(color: Colors.black54),
               ),
             ),
+          if (inspiration.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text(
+              'Style inspiration',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const Text(
+              'Photos for ideas — not actual products.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              key: const ValueKey('event-outfit-inspiration'),
+              height: 140,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: inspiration.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final image = inspiration[index];
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      image['image_url']?.toString() ?? '',
+                      width: 110,
+                      height: 140,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        width: 110,
+                        height: 140,
+                        color: Colors.black12,
+                        child: const Icon(
+                          Icons.image_not_supported_outlined,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Photos by ${_photoCredits(inspiration)} · Pexels',
+              style: const TextStyle(fontSize: 11, color: Colors.black45),
+            ),
+          ],
           if (fitNotes.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -978,6 +1029,16 @@ class _EventOutfitResult extends StatelessWidget {
       ),
     );
   }
+}
+
+String _photoCredits(List<Map<String, dynamic>> images) {
+  final names = images
+      .map((image) => image['photographer']?.toString().trim())
+      .where((name) => name != null && name.isNotEmpty)
+      .cast<String>()
+      .take(3)
+      .toList();
+  return names.isEmpty ? 'Pexels artists' : names.join(', ');
 }
 
 Color _colorFromHex(String hex) {

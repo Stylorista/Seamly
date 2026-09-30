@@ -116,6 +116,13 @@ void main() {
     expect(find.byKey(const ValueKey('event-outfit-result')), findsOneWidget);
     expect(find.textContaining('Garden Wedding look'), findsOneWidget);
     expect(find.textContaining('breathable'), findsOneWidget);
+    expect(find.byKey(const ValueKey('event-outfit-inspiration')), findsOneWidget);
+    expect(find.text('Style inspiration'), findsOneWidget);
+    expect(
+      find.text('Photos for ideas — not actual products.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Test Shooter'), findsOneWidget);
   });
 
   testWidgets('brief weather blip retries once automatically', (tester) async {
@@ -247,6 +254,20 @@ class _FakePlanApi extends SeamlyApi {
       'fit_notes': [],
       'reasons': ['34° feels-like heat calls for breathable linen.'],
       'confidence': 0.8,
+      'inspiration_images': [
+        {
+          'image_url': 'https://images.pexels.com/photo-one.jpg',
+          'photographer': 'Test Shooter',
+          'photographer_url': 'https://www.pexels.com/test',
+          'alt': 'Classic outfit inspiration',
+        },
+        {
+          'image_url': 'https://images.pexels.com/photo-two.jpg',
+          'photographer': 'Second Lens',
+          'photographer_url': 'https://www.pexels.com/second',
+          'alt': 'Evening outfit inspiration',
+        },
+      ],
       'model_version': 'event-outfit-0.1.0',
       'disclaimer': 'Forecast-based suggestion.',
     };

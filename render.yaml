@@ -17,4 +17,6 @@ services:
         sync: false
       - key: CORS_ALLOWED_ORIGINS
         sync: false
+      - key: PEXELS_API_KEY
+        sync: false
  

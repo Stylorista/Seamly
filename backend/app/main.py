@@ -9,6 +9,7 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .ai_engine import SIZE_CENTRES, SeamlyEngine
+from .outfit_images import OutfitImageService, build_inspiration_query
 from .account_store import (
     AccountExistsError,
     InvalidCredentialsError,
@@ -35,6 +36,7 @@ from .schemas import (
     ColorRequest,
     ColorResponse,
     FashionNewsResponse,
+    OutfitInspirationImage,
     OutfitPlanRequest,
     OutfitPlanResponse,
     OutfitPlanWeather,
@@ -78,6 +80,7 @@ fashion_news_service = FashionNewsService()
 weather_style_service = WeatherStyleService()
 shop_catalog_service = ShopCatalogService()
 account_store = create_account_store()
+outfit_image_service = OutfitImageService()
 
 
 @app.get("/health")
@@ -360,8 +363,21 @@ async def plan_event_outfit(request: OutfitPlanRequest) -> OutfitPlanResponse:
             request.measurements.model_dump(), request.size_label or "M", "regular"
         )
 
+    inspiration_images: list[OutfitInspirationImage] = []
+    try:
+        query = build_inspiration_query(
+            style=style_used,
+            pieces=style_result.pieces,
+            occasion=occasion,
+        )
+        for image in await outfit_image_service.fetch_images(query):
+            inspiration_images.append(OutfitInspirationImage.model_validate(image))
+    except Exception:
+        inspiration_images = []
+
     has_measurements = request.measurements is not None
     has_normals = not is_forecast and temp is not None
+
     if is_forecast and has_measurements:
         confidence = 0.8
     elif is_forecast:
@@ -397,6 +413,7 @@ async def plan_event_outfit(request: OutfitPlanRequest) -> OutfitPlanResponse:
         fit_notes=fit_notes,
         reasons=reasons,
         confidence=confidence,
+        inspiration_images=inspiration_images,
         model_version=f"event-outfit-0.1.0+{style_result.model_version}",
         disclaimer=(
             "Forecast-based styling suggestion, not a guarantee. Weather can "
