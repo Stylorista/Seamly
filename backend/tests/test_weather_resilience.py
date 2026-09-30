@@ -149,3 +149,101 @@ def test_wttr_for_date_rejects_unknown_date() -> None:
 
     with pytest.raises(WeatherServiceError):
         asyncio.run(run())
+
+
+def _normals_payload(month: int = 11, day: int = 18) -> dict:
+    tag = f"{month:02d}-{day:02d}"
+    times, highs, rains, winds = [], [], [], []
+    for year in range(2015, 2025):
+        times.append(f"{year}-{tag}")
+        highs.append(31.0)
+        rains.append(5.0 if year % 10 < 6 else 0.0)
+        winds.append(12.0)
+    times.append("2024-06-01")
+    highs.append(20.0)
+    rains.append(0.0)
+    winds.append(5.0)
+    return {
+        "daily": {
+            "time": times,
+            "temperature_2m_max": highs,
+            "precipitation_sum": rains,
+            "wind_speed_10m_max": winds,
+        }
+    }
+
+
+def test_summarize_normals_uses_same_month_day() -> None:
+    summary = WeatherStyleService._summarize_normals(
+        _normals_payload(), month=11, day=18
+    )
+    assert summary is not None
+    assert summary["temperature_c"] == 31.0
+    assert summary["rain_probability"] == 60
+    assert summary["condition"] == "Often rainy"
+    assert summary["sample_years"] == 10
+    assert summary["is_forecast"] is False
+
+
+def test_summarize_normals_needs_enough_samples() -> None:
+    assert (
+        WeatherStyleService._summarize_normals(
+            {"daily": {"time": [], "temperature_2m_max": []}}, month=11, day=18
+        )
+        is None
+    )
+
+
+def test_far_date_returns_climate_normals(monkeypatch) -> None:
+    from datetime import date, timedelta
+
+    event_date = datetime.now(UTC).date() + timedelta(days=60)
+    service = WeatherStyleService()
+
+    async def fake_geocode(client, city):
+        return {"latitude": 14.6, "longitude": 121.0, "name": "Manila"}
+
+    async def fake_get(client, url, params=None, attempts=3):
+        return _response(
+            200, _normals_payload(month=event_date.month, day=event_date.day)
+        )
+
+    monkeypatch.setattr(service, "_geocode", fake_geocode)
+    monkeypatch.setattr(
+        "app.weather_service._get_with_retry", fake_get
+    )
+
+    async def run() -> dict:
+        return await service.fetch_for_datetime("Manila", event_date, "18:00")
+
+    result = asyncio.run(run())
+    assert result["is_forecast"] is False
+    assert result["temperature_c"] == 31.0
+    assert result["rain_probability"] == 60
+    assert "climate normals" in str(result.get("source", ""))
+
+
+def test_far_date_falls_back_when_archive_fails(monkeypatch) -> None:
+    from datetime import date, timedelta
+
+    event_date = datetime.now(UTC).date() + timedelta(days=60)
+    service = WeatherStyleService()
+
+    async def fake_geocode(client, city):
+        return {"latitude": 14.6, "longitude": 121.0, "name": "Manila"}
+
+    async def fake_get(client, url, params=None, attempts=3):
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(service, "_geocode", fake_geocode)
+    monkeypatch.setattr(
+        "app.weather_service._get_with_retry", fake_get
+    )
+
+    async def run() -> dict:
+        return await service.fetch_for_datetime("Manila", event_date, "18:00")
+
+    result = asyncio.run(run())
+    assert result["is_forecast"] is False
+    assert result["temperature_c"] is None
+    assert result["condition"] == "Seasonal estimate"

@@ -303,6 +303,7 @@ async def plan_event_outfit(request: OutfitPlanRequest) -> OutfitPlanResponse:
         ) from error
 
     location = moment["location"] if isinstance(moment.get("location"), dict) else {}
+    place = str(location.get("name") or request.city.strip())
     occasion = engine.canonicalize_occasion(request.event_text)
     style_used = engine.canonicalize_style(request.style)
     color_season = request.color_season or "Autumn"
@@ -335,10 +336,23 @@ async def plan_event_outfit(request: OutfitPlanRequest) -> OutfitPlanResponse:
     )
     is_forecast = bool(moment.get("is_forecast"))
     if not is_forecast:
-        reasons = [
-            "Beyond the 16-day forecast window, so this is a seasonal "
-            "estimate rather than a true forecast."
-        ] + reasons
+        source = moment.get("source")
+        sample_years = moment.get("sample_years")
+        if (
+            isinstance(source, str)
+            and "climate normals" in source
+            and temp is not None
+            and isinstance(sample_years, int)
+        ):
+            reasons = [
+                f"Beyond the 16-day forecast, so this uses {sample_years}-year "
+                f"averages for this date in {place}."
+            ] + reasons
+        else:
+            reasons = [
+                "Beyond the 16-day forecast window, so this is a seasonal "
+                "estimate rather than a true forecast."
+            ] + reasons
 
     fit_notes: list[str] = []
     if request.measurements is not None and request.size_label in SIZE_CENTRES:
@@ -347,9 +361,16 @@ async def plan_event_outfit(request: OutfitPlanRequest) -> OutfitPlanResponse:
         )
 
     has_measurements = request.measurements is not None
-    confidence = 0.8 if (is_forecast and has_measurements) else (0.7 if is_forecast else 0.55)
+    has_normals = not is_forecast and temp is not None
+    if is_forecast and has_measurements:
+        confidence = 0.8
+    elif is_forecast:
+        confidence = 0.7
+    elif has_normals:
+        confidence = 0.62
+    else:
+        confidence = 0.55
     event_time = request.event_time or "18:00"
-    place = str(location.get("name") or request.city.strip())
     return OutfitPlanResponse(
         event_text=request.event_text,
         occasion=occasion,
@@ -380,6 +401,14 @@ async def plan_event_outfit(request: OutfitPlanRequest) -> OutfitPlanResponse:
         disclaimer=(
             "Forecast-based styling suggestion, not a guarantee. Weather can "
             "shift; confirm sizes against each seller chart. "
-            + ("This uses a seasonal estimate, not a live forecast." if not is_forecast else "Check the forecast again near the event.")
+            + (
+                "This uses climate averages for the date, not a live forecast."
+                if has_normals
+                else (
+                    "This uses a seasonal estimate, not a live forecast."
+                    if not is_forecast
+                    else "Check the forecast again near the event."
+                )
+            )
         ),
     )

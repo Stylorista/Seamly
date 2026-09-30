@@ -112,3 +112,36 @@ def test_style_free_text_mapping() -> None:
     assert main_module.engine.canonicalize_occasion("Office Holiday Party") == "work"
     assert main_module.engine.canonicalize_occasion("Funeral") == "event"
     assert main_module.engine.canonicalize_occasion("Beach Party") == "travel"
+
+
+def test_outfit_plan_normals_estimate_has_numbers(monkeypatch) -> None:
+    async def fake_moment(city, event_date, event_time):
+        return {
+            "location": {"name": "Manila"},
+            "timezone": "Asia/Manila",
+            "temperature_c": 30.5,
+            "feels_like_c": 33.0,
+            "condition": "Often rainy",
+            "weather_code": None,
+            "rain_probability": 60,
+            "wind_kmh": 12.0,
+            "uv_index_max": None,
+            "hour": 18,
+            "is_forecast": False,
+            "source": "climate normals (ERA5)",
+            "sample_years": 10,
+        }
+
+    monkeypatch.setattr(
+        main_module.weather_style_service, "fetch_for_datetime", fake_moment
+    )
+    far = (datetime.now(UTC).date() + timedelta(days=60)).isoformat()
+    response = client.post(
+        "/v1/outfits/plan", json=_payload(event_date=far, event_text="garden wedding")
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["weather"]["temperature_c"] == 30.5
+    assert "averages" in body["reasons"][0]
+    assert "climate averages" in body["disclaimer"]
+    assert body["confidence"] == 0.62

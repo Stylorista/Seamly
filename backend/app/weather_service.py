@@ -149,6 +149,7 @@ async def _get_with_retry(
 class WeatherStyleService:
     def __init__(self) -> None:
         self._cache: dict[str, tuple[datetime, WeatherHomeResponse]] = {}
+        self._normals_cache: dict[str, dict[str, object] | None] = {}
 
     async def fetch(
         self,
@@ -250,6 +251,14 @@ class WeatherStyleService:
                 "hour": hour,
             }
             if days_ahead > 15:
+                normals = await self._climate_normals(
+                    client,
+                    latitude=float(location["latitude"]),
+                    longitude=float(location["longitude"]),
+                    event_date=event_date,
+                )
+                if normals is not None:
+                    return {**base, **normals}
                 return {
                     **base,
                     "temperature_c": None,
@@ -310,6 +319,109 @@ class WeatherStyleService:
                 "daily_rain_max": round(float(daily_rain[0])) if daily_rain else None,
                 "is_forecast": True,
             }
+
+    async def _climate_normals(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        latitude: float,
+        longitude: float,
+        event_date: date,
+        years: int = 10,
+    ) -> dict[str, object] | None:
+        """10-year ERA5 averages for the event's month-day (free archive API).
+
+        Returns numbers with ``is_forecast=False`` and source
+        ``climate normals (ERA5)``, or None when unavailable. Results are
+        cached in memory: climate normals barely change.
+        """
+        month, day = event_date.month, event_date.day
+        if month == 2 and day == 29:
+            day = 28
+        cache_key = f"{round(latitude, 2)},{round(longitude, 2)}|{month:02d}-{day:02d}"
+        if cache_key in self._normals_cache:
+            return self._normals_cache[cache_key]
+        current_year = datetime.now(UTC).date().year
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": f"{current_year - years}-{month:02d}-{day:02d}",
+            "end_date": f"{current_year - 1}-{month:02d}-{day:02d}",
+            "daily": "temperature_2m_max,precipitation_sum,wind_speed_10m_max",
+            "timezone": "auto",
+        }
+        try:
+            response = await _get_with_retry(
+                client,
+                "https://archive-api.open-meteo.com/v1/archive",
+                params=params,
+            )
+            result = self._summarize_normals(response.json(), month=month, day=day)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            result = None
+        self._normals_cache[cache_key] = result
+        return result
+
+    @staticmethod
+    def _summarize_normals(
+        payload: dict[str, object], *, month: int, day: int
+    ) -> dict[str, object] | None:
+        daily = payload.get("daily", {})
+        if not isinstance(daily, dict):
+            return None
+        times = daily.get("time", [])
+        highs = daily.get("temperature_2m_max", [])
+        rains = daily.get("precipitation_sum", [])
+        winds = daily.get("wind_speed_10m_max", [])
+        if not isinstance(times, list):
+            return None
+        wanted = f"{month:02d}-{day:02d}"
+        samples: list[tuple[float, float, float | None]] = []
+        for index, stamp in enumerate(times):
+            if not isinstance(stamp, str) or stamp[5:] != wanted:
+                continue
+            try:
+                high = float(highs[index])
+            except (IndexError, TypeError, ValueError):
+                continue
+            try:
+                rain = float(rains[index])
+            except (IndexError, TypeError, ValueError):
+                rain = 0.0
+            try:
+                wind: float | None = float(winds[index])
+            except (IndexError, TypeError, ValueError):
+                wind = None
+            samples.append((high, rain, wind))
+        if len(samples) < 5:
+            return None
+        mean_high = sum(sample[0] for sample in samples) / len(samples)
+        rain_days = sum(1 for sample in samples if sample[1] > 1.0)
+        rain_fraction = rain_days / len(samples)
+        wind_values = [sample[2] for sample in samples if sample[2] is not None]
+        mean_wind = (
+            sum(wind_values) / len(wind_values) if wind_values else None
+        )
+        if rain_fraction >= 0.5:
+            condition = "Often rainy"
+        elif rain_fraction >= 0.3:
+            condition = "Sometimes rainy"
+        elif rain_fraction >= 0.15:
+            condition = "Occasionally wet"
+        else:
+            condition = "Usually dry"
+        return {
+            "temperature_c": round(mean_high, 1),
+            "feels_like_c": round(mean_high, 1),
+            "condition": condition,
+            "weather_code": None,
+            "rain_probability": round(rain_fraction * 100),
+            "wind_kmh": round(mean_wind, 1) if mean_wind is not None else None,
+            "uv_index_max": None,
+            "is_forecast": False,
+            "source": "climate normals (ERA5)",
+            "sample_years": len(samples),
+        }
 
     async def _geocode(
         self,

@@ -1,8 +1,10 @@
 # Event Outfit Planner — Plan (Home, above Weather)
 
 > Status: **✅ IMPLEMENTED** (backend `POST /v1/outfits/plan` + Home
-> `Plan your outfit` card). This doc is now the record of what was decided
-> and built.
+> `Plan your outfit` card), plus weather-blip retries/wttr fallback, plus
+> **ERA5 10-year climate normals for far dates** (real average temp + rain
+> frequency instead of dashes). This doc is now the record of what was
+> decided and built.
 
 ---
 
