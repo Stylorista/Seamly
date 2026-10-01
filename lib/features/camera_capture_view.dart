@@ -26,6 +26,7 @@ class CameraCaptureView extends StatelessWidget {
     this.previewReady = false,
     this.previewGuidance,
     this.previewBbox,
+    this.showRetryTip = false,
   });
 
   final camera.CameraController? controller;
@@ -47,6 +48,7 @@ class CameraCaptureView extends StatelessWidget {
   final bool previewReady;
   final String? previewGuidance;
   final List<double>? previewBbox;
+  final bool showRetryTip;
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +214,7 @@ class CameraCaptureView extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (error != null)
+                            if (error != null) ...[
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: Text(
@@ -223,8 +225,30 @@ class CameraCaptureView extends StatelessWidget {
                                     fontSize: 14,
                                   ),
                                 ),
-                              )
-                            else if (busy)
+                              ),
+                              if (showRetryTip)
+                                Container(
+                                  key: const ValueKey('camera-gallery-tip'),
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF16A34A),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: const Text(
+                                    'Still failing? Ask someone to take it with the back camera from 2–3 m, or choose a gallery photo taken that way.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                            ] else if (busy)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
                                 child: Text(

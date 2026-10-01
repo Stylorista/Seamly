@@ -240,7 +240,10 @@ The app remembers three shared things everywhere: your **size**, your
   boxes → stand in good light, full body in frame → live preview says
   "move left!" → snap → kitchen measures you + suggests a palette. The
   camera window itself (`camera_capture_view.dart`) is "dumb" — it only
-  displays, all thinking happens in the other file.
+  displays, all thinking happens in the other file. The green ready signal
+  runs the same strict gates as analysis (so ready means it will pass),
+  every rejection names the top fix, and after 2 failed scans the app
+  suggests the back camera or a gallery photo.
 - **Weather** (`home_screen.dart`): your city is remembered; pull down to
   refresh, like email. Above the weather sits the **Plan your outfit** card:
   type an event (21 shortcut chips), pick date + time, pick or type a style

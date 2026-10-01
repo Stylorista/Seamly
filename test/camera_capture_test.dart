@@ -145,6 +145,36 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('repeated failures suggest the gallery and back camera', (
+    tester,
+  ) async {
+    _viewport(tester, const Size(430, 900));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: _view(
+            error: 'No clearly framed full-body person was detected.',
+            showRetryTip: true,
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('camera-gallery-tip')), findsOneWidget);
+    expect(find.textContaining('back camera'), findsOneWidget);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: _view(
+            error: 'No clearly framed full-body person was detected.',
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('camera-gallery-tip')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('landscape result controls scroll without overflowing', (
     tester,
   ) async {
@@ -409,6 +439,7 @@ CameraCaptureView _view({
   bool previewReady = false,
   String? previewGuidance,
   List<double>? previewBbox,
+  bool showRetryTip = false,
 }) => CameraCaptureView(
   controller: controller,
   starting: false,
@@ -421,6 +452,7 @@ CameraCaptureView _view({
   previewReady: previewReady,
   previewGuidance: previewGuidance,
   previewBbox: previewBbox,
+  showRetryTip: showRetryTip,
   onBack: () {},
   onHelp: () {},
   onCapture: () {},

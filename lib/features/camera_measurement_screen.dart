@@ -65,6 +65,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
   bool _previewReady = false;
   String? _previewGuidance;
   List<double>? _previewBbox;
+  int _consecutiveScanFailures = 0;
 
   bool get _busy => _capturing || _analyzing || _analyzingColor;
   bool _currentScan(int generation) =>
@@ -100,6 +101,7 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
       _colorResult = null;
       _error = null;
       _colorError = null;
+      _consecutiveScanFailures = 0;
       _previewReady = false;
       _previewGuidance = null;
       _previewBbox = null;
@@ -418,6 +420,7 @@ if (state == AppLifecycleState.inactive) {
         );
       }
       setState(() => _result = result);
+      _consecutiveScanFailures = 0;
       final confidence =
           (result['measurement_confidence'] as Map<String, dynamic>?) ??
           const <String, dynamic>{};
@@ -450,9 +453,13 @@ if (state == AppLifecycleState.inactive) {
         }
       }
     } on ApiException catch (error) {
-      if (_currentScan(generation)) setState(() => _error = error.message);
+      if (_currentScan(generation)) {
+        _consecutiveScanFailures++;
+        setState(() => _error = error.message);
+      }
     } on Exception {
       if (_currentScan(generation)) {
+        _consecutiveScanFailures++;
         setState(
           () => _error = 'The photo could not be analyzed. Please try again.',
         );
@@ -471,6 +478,7 @@ if (state == AppLifecycleState.inactive) {
     if (_busy) return;
     _scanGeneration++;
     _stopPreviewLoop();
+    _consecutiveScanFailures = 0;
     setState(() {
       _photoBytes = null;
       _result = null;
@@ -572,6 +580,7 @@ if (state == AppLifecycleState.inactive) {
               previewReady: _previewReady,
               previewGuidance: _previewGuidance,
               previewBbox: _previewBbox,
+              showRetryTip: _consecutiveScanFailures >= 2,
               onBack: widget.onBack,
               onHelp: _reviewInstructions,
               onCapture: _capture,
@@ -705,6 +714,12 @@ class _ScanPreparationCard extends StatelessWidget {
               title: 'Position the phone',
               detail:
                   'Keep it upright and steady, about 2–3 metres away, against a plain contrasting background.',
+            ),
+            const _PreparationStep(
+              icon: Icons.people_outline_rounded,
+              title: 'Get help or prop the phone',
+              detail:
+                  'Selfies cannot fit a full body. Ask someone to use the back camera, or prop the phone upright and use the timer or a gallery photo.',
             ),
             const SizedBox(height: 4),
             Container(

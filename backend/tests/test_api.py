@@ -783,6 +783,28 @@ def _silhouette_photo() -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+def _distant_silhouette_photo() -> str:
+    """Same figure shrunk onto a taller canvas (~0.46 frame coverage).
+
+    Passes the lenient preview framing check but fails the strict
+    analysis gates, like a user standing too far away.
+    """
+    figure = Image.new("RGB", (240, 480), "#EEE7DF")
+    draw = ImageDraw.Draw(figure)
+    draw.ellipse((96, 35, 144, 83), fill="#2B2523")
+    draw.rectangle((108, 75, 132, 100), fill="#2B2523")
+    draw.polygon([(82, 90), (158, 90), (146, 285), (94, 285)], fill="#2B2523")
+    draw.rectangle((87, 105, 102, 285), fill="#2B2523")
+    draw.rectangle((138, 105, 153, 285), fill="#2B2523")
+    draw.rectangle((97, 280, 116, 445), fill="#2B2523")
+    draw.rectangle((124, 280, 143, 445), fill="#2B2523")
+    canvas = Image.new("RGB", (240, 900), "#EEE7DF")
+    canvas.paste(figure, (0, 220))
+    buffer = BytesIO()
+    canvas.save(buffer, format="JPEG", quality=90)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
 def _portrait_photo() -> str:
     image = Image.new("RGB", (240, 480), "#D9D7D2")
     draw = ImageDraw.Draw(image)
@@ -838,6 +860,33 @@ def test_body_scan_preview_reports_readiness_for_silhouette() -> None:
     assert body["bbox"] is not None
     assert len(body["bbox"]) == 4
     assert "Ready" in body["guidance"]
+
+
+def test_body_scan_preview_withholds_ready_for_distant_person() -> None:
+    """A far-away figure passes lenient framing but must not show ready."""
+    response = client.post(
+        "/v1/body-scan/preview",
+        json={"image_base64": _distant_silhouette_photo(), "consent_confirmed": True},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["person_detected"] is True
+    assert body["bbox"] is not None
+    assert body["ready"] is False
+    assert "Move closer" in body["guidance"]
+
+
+def test_body_scan_analyze_names_the_framing_fix() -> None:
+    response = client.post(
+        "/v1/body-scan/analyze",
+        json={
+            "image_base64": _distant_silhouette_photo(),
+            "reference_height_cm": 165,
+            "consent_confirmed": True,
+        },
+    )
+    assert response.status_code == 422
+    assert "Move closer" in response.json()["detail"]
 
 
 def test_body_scan_preview_rejects_blank_frame() -> None:

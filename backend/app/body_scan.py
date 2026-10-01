@@ -83,7 +83,7 @@ class BodyScanEstimator:
                 bbox=None,
             )
         try:
-            mask, _separation = self._foreground_mask(array)
+            mask, separation = self._foreground_mask(array)
             mask = self._largest_connected_component(mask, min_fraction=0.012)
             bounds = self._subject_bounds(mask, min_height_fraction=0.34)
             person_confidence, _warnings = self._validate_person_shape(
@@ -108,9 +108,8 @@ class BodyScanEstimator:
         ]
         coverage = (y_max - y_min + 1) / height
         center = ((x_min + x_max) / 2) / width
-        ready = person_confidence >= 0.52 and 0.42 <= coverage <= 0.96
 
-        if not ready:
+        if not (person_confidence >= 0.52 and 0.42 <= coverage <= 0.96):
             if coverage < 0.42:
                 guidance = "Step back so your full body fits in the frame."
             elif coverage > 0.96:
@@ -119,8 +118,25 @@ class BodyScanEstimator:
                 guidance = "Stand in the centre of the guide."
             else:
                 guidance = "Face forward with arms slightly away from your sides."
+            ready = False
         else:
-            guidance = "Ready — hold still and take the photo."
+            # The green signal must predict a passing analysis, so the
+            # preview applies the same strict gates the analyzer enforces.
+            # A photo that only passes the lenient framing check keeps its
+            # specific guidance instead of a false ready.
+            try:
+                strict_confidence, _ = self._validate_person_shape(mask, bounds)
+                quality, _ = self._quality(mask, bounds, separation)
+            except BodyScanError as error:
+                guidance = str(error)
+                ready = False
+            else:
+                ready = quality >= 0.64 and strict_confidence >= 0.68
+                guidance = (
+                    "Ready — hold still and take the photo."
+                    if ready
+                    else "Almost there — hold the pose steady."
+                )
 
         return BodyScanPreviewResponse(
             ready=ready,
@@ -174,9 +190,26 @@ class BodyScanEstimator:
 
         quality, quality_warnings = self._quality(mask, bounds, separation)
         if quality < 0.64 or person_confidence < 0.68:
+            image_height, image_width = mask.shape
+            coverage = (y_max - y_min + 1) / image_height
+            subject_center = ((x_min + x_max) / 2) / image_width
+            causes: list[str] = []
+            if coverage < 0.55:
+                causes.append(
+                    "Move closer while keeping your head and feet inside the guide."
+                )
+            if separation < 0.35:
+                causes.append(
+                    "Use a plain background that contrasts with your clothing."
+                )
+            if y_min <= image_height * 0.02 or y_max >= image_height * 0.98:
+                causes.append("Leave space above your head and below your feet.")
+            if abs(subject_center - 0.5) > 0.13:
+                causes.append("Stand in the centre of the guide.")
             raise BodyScanError(
                 "No clearly framed full-body person was detected. Show one person "
                 "standing straight, head to toe, against a plain contrasting background."
+                + (" " + " ".join(causes[:2]) if causes else "")
             )
         warnings = [*person_warnings, *quality_warnings]
         confidence_multipliers = {
@@ -411,9 +444,22 @@ class BodyScanEstimator:
             or center_drift > 0.24
         )
         if hard_failure:
+            hints = cls._framing_hints(
+                height_coverage=height_coverage,
+                width_coverage=width_coverage,
+                aspect=aspect,
+                fill=fill,
+                head_ratio=head_ratio,
+                lower_ratio=lower_ratio,
+                center=center,
+                center_drift=center_drift,
+                min_coverage=min_coverage,
+                max_center=max_center,
+            )
             raise BodyScanError(
                 "No clearly framed full-body person was detected. Use a front-facing, head-to-toe "
                 "photo of one person with arms slightly away from the torso."
+                + (" " + hints[0] if hints else "")
             )
 
         coverage_score = max(0.0, 1 - abs(height_coverage - 0.80) / 0.35)
@@ -444,6 +490,46 @@ class BodyScanEstimator:
         if center_drift > 0.12:
             warnings.append("Face forward and keep your shoulders and hips level.")
         return confidence, warnings
+
+    @staticmethod
+    def _framing_hints(
+        *,
+        height_coverage: float,
+        width_coverage: float,
+        aspect: float,
+        fill: float,
+        head_ratio: float,
+        lower_ratio: float,
+        center: float,
+        center_drift: float,
+        min_coverage: float,
+        max_center: float,
+    ) -> list[str]:
+        """Name the single most actionable framing fix first."""
+        hints: list[str] = []
+        if height_coverage < min_coverage:
+            hints.append(
+                "Move closer so you fill more of the guide, keeping head and feet inside."
+            )
+        if width_coverage < 0.08:
+            hints.append("Move closer while keeping your whole body in frame.")
+        if width_coverage > 0.78:
+            hints.append("Move back; you are filling the frame edge to edge.")
+        if aspect < 1.45:
+            hints.append("Hold the phone upright and face the camera straight on.")
+        if aspect > 7.0:
+            hints.append("Step back; the silhouette is too narrow to measure.")
+        if not 0.18 <= fill <= 0.90:
+            hints.append("Use a plain background that contrasts with your clothing.")
+        if not 0.22 <= head_ratio <= 0.96:
+            hints.append("Keep hair, hats, and raised hands away from the head outline.")
+        if not 0.12 <= lower_ratio <= 1.25:
+            hints.append("Stand straight with feet slightly apart and arms visible.")
+        if abs(center - 0.5) > max_center:
+            hints.append("Stand in the centre of the guide.")
+        if center_drift > 0.24:
+            hints.append("Face forward and keep shoulders and hips level.")
+        return hints
 
     @staticmethod
     def _row_extent(
