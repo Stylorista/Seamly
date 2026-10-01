@@ -6,8 +6,8 @@
 > each other, and — most importantly — **exactly which file to open when you
 > want to change something**.
 >
-> App version covered: `1.8.2+17`. Server version: `1.7.0`.
-> Main branch: `main`.
+> App version covered: `1.9.4+22`. Server version: `1.7.0`.
+> Main branch: `main`. See `CHANGELOG.md` for what changed per release.
 
 ---
 
@@ -252,6 +252,9 @@ The app remembers three shared things everywhere: your **size**, your
   type an event (21 shortcut chips), pick date + time, pick or type a style
   → the app returns a forecast-driven outfit with reasons
   (`POST /v1/outfits/plan`), personalized by your scan size and color.
+  Dates within 16 days use the live hourly forecast (with server retries
+  and a wttr.in backup); farther dates use 10-year ERA5 climate averages,
+  honestly labeled. The result can also carry Pexels inspiration photos.
 - **Shop** (`shop_screen.dart`): only shows listings from an approved list
   with matching photos (no fake products!). Otherwise it shows
   "search ideas" that open Shopee/Lazada/Temu in your browser.
