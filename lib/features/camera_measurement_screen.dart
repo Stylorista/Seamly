@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart' as picker;
 
 import '../services/seamly_api.dart';
+import '../services/person_segmentation.dart';
 import '../theme/seamly_theme.dart';
 import '../widgets/common.dart';
 import 'camera_capture_view.dart';
@@ -22,6 +23,7 @@ class CameraMeasurementScreen extends StatefulWidget {
     required this.onOpenShop,
     this.onOpenAccount,
     this.avatarBase64,
+    this.segmenter,
   });
 
   final SeamlyApi api;
@@ -33,6 +35,7 @@ class CameraMeasurementScreen extends StatefulWidget {
   final VoidCallback onOpenShop;
   final VoidCallback? onOpenAccount;
   final String? avatarBase64;
+  final PersonSegmentation? segmenter;
 
   @override
   State<CameraMeasurementScreen> createState() =>
@@ -42,6 +45,8 @@ class CameraMeasurementScreen extends StatefulWidget {
 class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
     with WidgetsBindingObserver {
   final _picker = picker.ImagePicker();
+  late final PersonSegmentation _segmenter =
+      widget.segmenter ?? PersonSegmentation();
 
   camera.CameraController? _cameraController;
   List<camera.CameraDescription> _cameras = const [];
@@ -130,6 +135,7 @@ if (state == AppLifecycleState.inactive) {
     _scanGeneration++;
     _stopPreviewLoop();
     unawaited(_disposeCamera());
+    unawaited(_segmenter.dispose());
     super.dispose();
   }
 
@@ -406,8 +412,13 @@ if (state == AppLifecycleState.inactive) {
       _colorError = null;
     });
     try {
+      // Clean the background on-device so the silhouette estimator sees a
+      // plain white backdrop. Falls back to the original photo when
+      // segmentation is unavailable; color analysis always uses it.
+      final scanBytes = await _segmenter.isolatePerson(bytes) ?? bytes;
+      if (!_currentScan(generation)) return;
       final result = await widget.api.analyzeBodyPhoto(
-        imageBytes: bytes,
+        imageBytes: scanBytes,
         referenceHeightCm: widget.referenceHeightCm!,
       );
       if (!_currentScan(generation)) return;

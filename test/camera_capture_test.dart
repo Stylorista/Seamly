@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:seamly/features/camera_capture_view.dart';
 import 'package:seamly/features/camera_measurement_screen.dart';
+import 'package:seamly/services/person_segmentation.dart';
 import 'package:seamly/services/seamly_api.dart';
 
 final _photo = base64Decode(
@@ -359,8 +360,34 @@ void main() {
       },
     );
 
-    testWidgets('results remain readable on a small screen with large text', (
+    testWidgets('segmented photo feeds body analysis, original feeds color', (
       tester,
+    ) async {
+      _viewport(tester, const Size(430, 900));
+      final api = _ScanApi();
+      final cleaned = Uint8List.fromList([..._photo, 0]);
+      await tester.pumpWidget(
+        _screen(
+          api,
+          segmenter: PersonSegmentation(
+            isolateForeground: (_) async => cleaned,
+          ),
+        ),
+      );
+      await _acceptInstructions(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Choose photo'));
+      await tester.pump();
+      api.body.complete(_bodyResult);
+      await tester.pump();
+      api.color.complete(_colorResult);
+      await tester.pumpAndSettle();
+      expect(api.bodyImageBytes, same(cleaned));
+      expect(api.colorImageBytes, isNot(same(cleaned)));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('results remain readable on a small screen with large text', (      tester,
     ) async {
       _viewport(tester, const Size(320, 568));
       final api = _ScanApi();
@@ -409,6 +436,7 @@ Widget _screen(
   ValueChanged<Map<String, double>>? onMeasurements,
   ValueChanged<String>? onColor,
   double textScale = 1,
+  PersonSegmentation? segmenter,
 }) => MaterialApp(
   builder: (context, child) => MediaQuery(
     data: MediaQuery.of(
@@ -425,6 +453,7 @@ Widget _screen(
       onMeasurementsReady: onMeasurements ?? (_) {},
       onColorSeasonAnalyzed: onColor ?? (_) {},
       onOpenShop: () {},
+      segmenter: segmenter,
     ),
   ),
 );
@@ -557,6 +586,8 @@ class _ScanApi extends SeamlyApi {
   int bodyCalls = 0;
   int colorCalls = 0;
   int previewCalls = 0;
+  Uint8List? bodyImageBytes;
+  Uint8List? colorImageBytes;
   @override
   Future<Map<String, dynamic>> previewBodyPhoto({
     required Uint8List imageBytes,
@@ -577,6 +608,7 @@ class _ScanApi extends SeamlyApi {
     required double referenceHeightCm,
   }) {
     bodyCalls++;
+    bodyImageBytes = imageBytes;
     return body.future;
   }
 
@@ -585,6 +617,7 @@ class _ScanApi extends SeamlyApi {
     required Uint8List imageBytes,
   }) {
     colorCalls++;
+    colorImageBytes = imageBytes;
     return color.future;
   }
 }
