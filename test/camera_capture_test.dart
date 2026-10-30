@@ -387,7 +387,8 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('results remain readable on a small screen with large text', (      tester,
+    testWidgets('results remain readable on a small screen with large text', (
+      tester,
     ) async {
       _viewport(tester, const Size(320, 568));
       final api = _ScanApi();
@@ -456,6 +457,64 @@ void main() {
       expect(saved!.containsKey('neck'), isFalse);
       expect(saved!['chest'], 80.0);
       expect(tester.takeException(), isNull);
+    });
+
+    Future<_ScanApi> openLiveCamera(WidgetTester tester) async {
+      _viewport(tester, const Size(430, 900));
+      CameraPlatform.instance = _LiveCameraPlatform();
+      final api = _ScanApi();
+      await tester.pumpWidget(_screen(api));
+      await _acceptInstructions(tester);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const ValueKey('camera-timer')));
+      await tester.pump();
+      expect(find.text('Timer 3s'), findsOneWidget);
+      return api;
+    }
+
+    Future<void> closeCamera(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 2));
+    }
+
+    testWidgets('self-timer counts down, then takes one photo', (tester) async {
+      final api = await openLiveCamera(tester);
+      await tester.tap(find.byTooltip('Take photo'));
+      await tester.pump();
+      expect(find.text('3'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('2'), findsOneWidget);
+      expect(api.bodyCalls, 0);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('camera-countdown')), findsNothing);
+      expect(api.bodyCalls, 1);
+      await closeCamera(tester);
+    });
+
+    testWidgets('pressing the shutter again cancels the self-timer', (
+      tester,
+    ) async {
+      final api = await openLiveCamera(tester);
+      await tester.tap(find.byTooltip('Take photo'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Cancel timer'));
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.byKey(const ValueKey('camera-countdown')), findsNothing);
+      expect(api.bodyCalls, 0);
+      await closeCamera(tester);
+    });
+
+    testWidgets('leaving the camera cancels a running self-timer', (
+      tester,
+    ) async {
+      final api = await openLiveCamera(tester);
+      await tester.tap(find.byTooltip('Take photo'));
+      await tester.pump();
+      await tester.pumpWidget(_screen(api, active: false));
+      await tester.pump(const Duration(seconds: 5));
+      expect(api.bodyCalls, 0);
+      await closeCamera(tester);
     });
   });
 }
@@ -639,6 +698,19 @@ class _FailingScanApi extends _ScanApi {
     bodyCalls++;
     throw const ApiException('No full-body person was detected.');
   }
+}
+
+/// A camera that initializes immediately and can take pictures.
+class _LiveCameraPlatform extends _DelayedCameraPlatform {
+  @override
+  Future<int> createCamera(
+    CameraDescription cameraDescription,
+    ResolutionPreset? resolutionPreset, {
+    bool enableAudio = false,
+  }) async => ++created;
+
+  @override
+  Future<XFile> takePicture(int cameraId) async => XFile.fromData(_photo);
 }
 
 class _ScanApi extends SeamlyApi {

@@ -82,6 +82,50 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
   int _consecutiveScanFailures = 0;
 
   bool get _busy => _capturing || _analyzing || _analyzingColor;
+
+  /// Self-timer for solo scans: off, 3 or 10 seconds.
+  static const _timerOptions = [0, 3, 10];
+  int _timerSeconds = 0;
+  int? _countdown;
+  Timer? _countdownTimer;
+
+  void _cycleTimer() {
+    final next =
+        (_timerOptions.indexOf(_timerSeconds) + 1) % _timerOptions.length;
+    setState(() => _timerSeconds = _timerOptions[next]);
+  }
+
+  /// Shutter press: start the self-timer, cancel a running one, or capture.
+  void _onShutter() {
+    if (_countdown != null) {
+      setState(_cancelCountdown);
+      return;
+    }
+    if (_timerSeconds == 0) {
+      _capture();
+      return;
+    }
+    if (_busy || _cameraStarting || !_ensureCalibration()) return;
+    setState(() => _countdown = _timerSeconds);
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return timer.cancel();
+      final remaining = (_countdown ?? 1) - 1;
+      if (remaining > 0) {
+        setState(() => _countdown = remaining);
+        return;
+      }
+      setState(_cancelCountdown);
+      _capture();
+    });
+  }
+
+  /// Does not call setState so it is safe from dispose; callers rebuild.
+  void _cancelCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _countdown = null;
+  }
+
   bool _currentScan(int generation) =>
       mounted && widget.active && generation == _scanGeneration;
 
@@ -173,6 +217,8 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
   }
 
   void _stopPreviewLoop() {
+    // Leaving the live view also cancels a pending self-timer.
+    _cancelCountdown();
     _previewTimer?.cancel();
     _previewTimer = null;
     _previewInFlight = false;
@@ -621,7 +667,10 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
               showRetryTip: _consecutiveScanFailures >= 2,
               onBack: widget.onBack,
               onHelp: _reviewInstructions,
-              onCapture: _capture,
+              onCapture: _onShutter,
+              timerSeconds: _timerSeconds,
+              countdown: _countdown,
+              onTimerChanged: _cycleTimer,
               onRetake: _retake,
               onGallery: () => _choosePhoto(picker.ImageSource.gallery),
               onSwitch: _cameras.length > 1 ? _switchCamera : null,

@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Stories this person liked in the news feed, kept on this phone only.
+const likedStoriesPreferenceKey = 'seamly.liked_stories';
+
 /// Reads a measurement map from JSON, skipping optional fields the API sends
 /// as null (or any other non-numeric value) instead of throwing.
 Map<String, double>? measurementsFromJson(Object? raw) {
@@ -177,6 +180,7 @@ class PreferencesSessionStore implements SessionStore {
       await preferences.remove(_sizeLabelKey);
       await preferences.remove(_pendingSyncKey);
       await preferences.remove(_heightConfirmedKey);
+      await preferences.remove(likedStoriesPreferenceKey);
     }
   }
 

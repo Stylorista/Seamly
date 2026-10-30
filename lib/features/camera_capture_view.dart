@@ -27,6 +27,9 @@ class CameraCaptureView extends StatelessWidget {
     this.previewGuidance,
     this.previewBbox,
     this.showRetryTip = false,
+    this.timerSeconds = 0,
+    this.countdown,
+    this.onTimerChanged,
   });
 
   final camera.CameraController? controller;
@@ -50,10 +53,16 @@ class CameraCaptureView extends StatelessWidget {
   final List<double>? previewBbox;
   final bool showRetryTip;
 
+  /// Self-timer length in seconds (0 = off) and the seconds left while it runs.
+  final int timerSeconds;
+  final int? countdown;
+  final VoidCallback? onTimerChanged;
+
   @override
   Widget build(BuildContext context) {
     final captured = photoBytes != null;
     final ready = controller?.value.isInitialized == true;
+    final counting = countdown != null;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
@@ -78,10 +87,10 @@ class CameraCaptureView extends StatelessWidget {
                         )
                       : ready
                       ? kIsWeb
-                          // Web video already cover-crops itself via CSS; our
-                          // ratio-based cover box would crop it a second time.
-                          ? controller!.buildPreview()
-                          : _CoverPreview(controller: controller!)
+                            // Web video already cover-crops itself via CSS; our
+                            // ratio-based cover box would crop it a second time.
+                            ? controller!.buildPreview()
+                            : _CoverPreview(controller: controller!)
                       : const ColoredBox(color: Color(0xFF151515)),
                 ),
                 if (ready && !captured)
@@ -120,6 +129,23 @@ class CameraCaptureView extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (counting)
+                  IgnorePointer(
+                    child: Center(
+                      child: Text(
+                        '$countdown',
+                        key: const ValueKey('camera-countdown'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 120,
+                          fontWeight: FontWeight.w800,
+                          shadows: [
+                            Shadow(color: Colors.black54, blurRadius: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 if (!captured && !ready)
                   SafeArea(
                     child: Padding(
@@ -359,6 +385,27 @@ class CameraCaptureView extends StatelessWidget {
                                 ),
                                 child: const Text('Retry camera'),
                               ),
+                            if (ready && !captured && onTimerChanged != null)
+                              TextButton.icon(
+                                key: const ValueKey('camera-timer'),
+                                onPressed: busy || counting
+                                    ? null
+                                    : onTimerChanged,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  disabledForegroundColor: Colors.white54,
+                                ),
+                                icon: Icon(
+                                  timerSeconds == 0
+                                      ? Icons.timer_off_outlined
+                                      : Icons.timer_outlined,
+                                ),
+                                label: Text(
+                                  timerSeconds == 0
+                                      ? 'Timer off'
+                                      : 'Timer ${timerSeconds}s',
+                                ),
+                              ),
                             Flex(
                               direction: landscape
                                   ? Axis.vertical
@@ -369,7 +416,7 @@ class CameraCaptureView extends StatelessWidget {
                                 _RoundControl(
                                   label: 'Choose photo',
                                   icon: Icons.photo_library_outlined,
-                                  onPressed: busy || starting
+                                  onPressed: busy || starting || counting
                                       ? null
                                       : onGallery,
                                 ),
@@ -383,6 +430,8 @@ class CameraCaptureView extends StatelessWidget {
                                     key: const ValueKey('camera-shutter'),
                                     tooltip: captured
                                         ? 'Retake photo'
+                                        : counting
+                                        ? 'Cancel timer'
                                         : 'Take photo',
                                     onPressed: busy || starting
                                         ? null
@@ -394,17 +443,13 @@ class CameraCaptureView extends StatelessWidget {
                                       disabledForegroundColor: Colors.white54,
                                       side: BorderSide(
                                         color:
-                                            previewReady &&
-                                                !captured &&
-                                                !busy
+                                            previewReady && !captured && !busy
                                             ? const Color(0xFF4ADE80)
                                             : Colors.white,
                                         width: 5,
                                       ),
                                       backgroundColor:
-                                          previewReady &&
-                                              !captured &&
-                                              !busy
+                                          previewReady && !captured && !busy
                                           ? const Color(
                                               0xFF16A34A,
                                             ).withValues(alpha: 0.45)
@@ -433,7 +478,8 @@ class CameraCaptureView extends StatelessWidget {
                                 _RoundControl(
                                   label: 'Switch camera',
                                   icon: Icons.cameraswitch_outlined,
-                                  onPressed: busy || starting || captured
+                                  onPressed:
+                                      busy || starting || captured || counting
                                       ? null
                                       : onSwitch,
                                 ),

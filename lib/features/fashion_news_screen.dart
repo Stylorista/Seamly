@@ -1,14 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/seamly_api.dart';
+import '../services/session_store.dart';
 import '../theme/seamly_theme.dart';
 
+/// Opens the phone's share sheet for a story.
+Future<void> shareWithSystemSheet(String text, String subject) async {
+  await SharePlus.instance.share(ShareParams(text: text, subject: subject));
+}
+
 class FashionNewsScreen extends StatefulWidget {
-  const FashionNewsScreen({super.key, required this.api, this.active = true});
+  const FashionNewsScreen({
+    super.key,
+    required this.api,
+    this.active = true,
+    this.shareStory = shareWithSystemSheet,
+  });
 
   final SeamlyApi api;
   final bool active;
+
+  /// Shares story text; replaceable in tests. Failures fall back to copying.
+  final Future<void> Function(String text, String subject) shareStory;
 
   @override
   State<FashionNewsScreen> createState() => _FashionNewsScreenState();
@@ -41,8 +58,59 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
   @override
   void initState() {
     super.initState();
+    _loadLikes();
     if (widget.active) {
       _loadFeed();
+    }
+  }
+
+  static const _maxSavedLikes = 500;
+
+  /// Likes are personal and kept on this phone (cleared on logout); they are
+  /// never added to the publisher's own reaction counts.
+  Future<void> _loadLikes() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = preferences.getStringList(likedStoriesPreferenceKey);
+      if (!mounted || saved == null) return;
+      setState(() => _likedPosts.addAll(saved));
+    } on Exception {
+      // Likes still work for this visit if storage is unavailable.
+    }
+  }
+
+  Future<void> _toggleLike(FashionNewsPost post) async {
+    setState(() {
+      if (!_likedPosts.remove(post.id)) _likedPosts.add(post.id);
+      while (_likedPosts.length > _maxSavedLikes) {
+        _likedPosts.remove(_likedPosts.first);
+      }
+    });
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(
+        likedStoriesPreferenceKey,
+        _likedPosts.toList(),
+      );
+    } on Exception {
+      // The like stays on screen for this visit.
+    }
+  }
+
+  Future<void> _shareStory(FashionNewsPost post) async {
+    try {
+      await widget.shareStory('${post.title}\n${post.url}', post.title);
+    } catch (_) {
+      await _copyLink(post);
+    }
+  }
+
+  Future<void> _copyLink(FashionNewsPost post) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: post.url));
+      if (mounted) _showMessage('Link copied. Paste it anywhere to share.');
+    } catch (_) {
+      if (mounted) _showMessage('This story could not be shared.');
     }
   }
 
@@ -276,19 +344,10 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
                     child: _FeedPostCard(
                       post: post,
                       liked: liked,
-                      onLike: () => setState(() {
-                        if (liked) {
-                          _likedPosts.remove(post.id);
-                        } else {
-                          _likedPosts.add(post.id);
-                        }
-                      }),
-                      onComment: () => _showMessage(
-                        'Comments are available on the original story.',
-                      ),
-                      onShare: () => _showMessage(
-                        'Open the story to share it from the original source.',
-                      ),
+                      onLike: () => _toggleLike(post),
+                      // Comments live with the publisher, so open the story.
+                      onComment: () => _openStory(post),
+                      onShare: () => _shareStory(post),
                       onOpen: () => _openStory(post),
                     ),
                   );
@@ -730,14 +789,15 @@ class _FeedPostCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                Icon(
+                // Reactions counted by the source, not Seamly likes.
+                const Icon(
                   Icons.thumb_up_rounded,
-                  color: liked ? const Color(0xFF1877F2) : Colors.black45,
+                  color: Colors.black45,
                   size: 17,
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  '${post.likeCount + (liked ? 1 : 0)}',
+                  '${post.likeCount}',
                   style: const TextStyle(color: Colors.black54, fontSize: 12),
                 ),
                 const SizedBox(width: 12),
@@ -756,7 +816,7 @@ class _FeedPostCard extends StatelessWidget {
                   icon: liked
                       ? Icons.thumb_up_rounded
                       : Icons.thumb_up_outlined,
-                  label: 'Like',
+                  label: liked ? 'Liked' : 'Like',
                   color: liked ? const Color(0xFF1877F2) : Colors.black54,
                   onPressed: onLike,
                 ),
