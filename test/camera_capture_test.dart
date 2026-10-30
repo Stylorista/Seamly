@@ -407,6 +407,56 @@ void main() {
       expect(find.text('Natural waist'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('fail, retake, fail shows the gallery help tip', (
+      tester,
+    ) async {
+      _viewport(tester, const Size(430, 900));
+      final api = _FailingScanApi();
+      await tester.pumpWidget(_screen(api));
+      await _acceptInstructions(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Choose photo'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('camera-gallery-tip')), findsNothing);
+      await tester.tap(find.byTooltip('Retake photo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Choose photo'));
+      await tester.pumpAndSettle();
+      expect(api.bodyCalls, 2);
+      expect(find.byKey(const ValueKey('camera-gallery-tip')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('null optional measurements from a scan do not crash', (
+      tester,
+    ) async {
+      _viewport(tester, const Size(430, 900));
+      final api = _ScanApi();
+      Map<String, double>? saved;
+      await tester.pumpWidget(
+        _screen(api, onMeasurements: (values) => saved = values),
+      );
+      await _acceptInstructions(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Choose photo'));
+      await tester.pump();
+      api.body.complete({
+        ..._bodyResult,
+        'measurements': {
+          ...(_bodyResult['measurements'] as Map<String, dynamic>),
+          'neck': null,
+          'wrist': null,
+        },
+      });
+      await tester.pump();
+      api.color.complete(_colorResult);
+      await tester.pumpAndSettle();
+      expect(saved, isNotNull);
+      expect(saved!.containsKey('neck'), isFalse);
+      expect(saved!['chest'], 80.0);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
 
@@ -578,6 +628,17 @@ class _DelayedCameraPlatform extends _NoCameraPlatform {
       operations.add('dispose $cameraId');
   @override
   Widget buildPreview(int cameraId) => const ColoredBox(color: Colors.blueGrey);
+}
+
+class _FailingScanApi extends _ScanApi {
+  @override
+  Future<Map<String, dynamic>> analyzeBodyPhoto({
+    required Uint8List imageBytes,
+    required double referenceHeightCm,
+  }) async {
+    bodyCalls++;
+    throw const ApiException('No full-body person was detected.');
+  }
 }
 
 class _ScanApi extends SeamlyApi {

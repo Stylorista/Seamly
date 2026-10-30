@@ -1071,3 +1071,63 @@ def test_tropical_season_uses_wet_dry_cycle() -> None:
     assert body["current_season"] == "Wet"
     assert body["pieces"]
     assert body["palette"]
+
+def test_body_scan_preview_tells_a_distant_person_to_move_closer() -> None:
+    figure = Image.new("RGB", (240, 480), "#EEE7DF")
+    draw = ImageDraw.Draw(figure)
+    draw.ellipse((96, 35, 144, 83), fill="#2B2523")
+    draw.rectangle((108, 75, 132, 100), fill="#2B2523")
+    draw.polygon([(82, 90), (158, 90), (146, 285), (94, 285)], fill="#2B2523")
+    draw.rectangle((87, 105, 102, 285), fill="#2B2523")
+    draw.rectangle((138, 105, 153, 285), fill="#2B2523")
+    draw.rectangle((97, 280, 116, 445), fill="#2B2523")
+    draw.rectangle((124, 280, 143, 445), fill="#2B2523")
+    canvas = Image.new("RGB", (480, 1080), "#EEE7DF")
+    canvas.paste(figure, (120, 300))
+    buffer = BytesIO()
+    canvas.save(buffer, format="JPEG", quality=90)
+    response = client.post(
+        "/v1/body-scan/preview",
+        json={
+            "image_base64": base64.b64encode(buffer.getvalue()).decode("ascii"),
+            "consent_confirmed": True,
+        },
+    )
+    assert response.status_code == 200
+    guidance = response.json()["guidance"]
+    assert "Move closer" in guidance
+    assert "Step back" not in guidance
+
+
+def test_news_source_status_separates_empty_from_failed() -> None:
+    status = fashion_news_service._source_status
+    failed = status("Src", RuntimeError("down"), live="Live", unavailable="Down")
+    empty = status("Src", [], live="Live", unavailable="Down")
+    assert failed.connected is False and failed.note == "Down"
+    assert empty.connected is True
+    assert "no stories match" in empty.note
+
+
+def test_publisher_feeds_report_failure_only_when_no_feed_is_readable() -> None:
+    import httpx
+
+    rss = (
+        b"<rss><channel><item><title>Runway report</title>"
+        b"<link>https://example.com/a</link><description>Runway</description>"
+        b"</item></channel></rss>"
+    )
+
+    async def run(handler):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            return await fashion_news_service._fetch_publisher_feeds(
+                http, "gothic", 8
+            )
+
+    healthy = asyncio.run(run(lambda request: httpx.Response(200, content=rss)))
+    assert healthy == []
+    try:
+        asyncio.run(run(lambda request: httpx.Response(503)))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("all publisher feeds failing must be reported")

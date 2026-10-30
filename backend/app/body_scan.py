@@ -111,7 +111,11 @@ class BodyScanEstimator:
 
         if not (person_confidence >= 0.52 and 0.42 <= coverage <= 0.96):
             if coverage < 0.42:
-                guidance = "Step back so your full body fits in the frame."
+                # Low coverage means the body looks small: the person is too far away.
+                guidance = (
+                    "Move closer so your body fills more of the guide, "
+                    "keeping your head and feet inside."
+                )
             elif coverage > 0.96:
                 guidance = "Move back a little so your head and feet are visible."
             elif abs(center - 0.5) > 0.22:

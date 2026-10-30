@@ -2,6 +2,17 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Reads a measurement map from JSON, skipping optional fields the API sends
+/// as null (or any other non-numeric value) instead of throwing.
+Map<String, double>? measurementsFromJson(Object? raw) {
+  if (raw is! Map) return null;
+  return {
+    for (final entry in raw.entries)
+      if (entry.value is num)
+        entry.key.toString(): (entry.value as num).toDouble(),
+  };
+}
+
 class AccountSession {
   const AccountSession({
     required this.token,
@@ -15,18 +26,13 @@ class AccountSession {
 
   factory AccountSession.fromApi(Map<String, dynamic> response) {
     final profile = response['profile'] as Map<String, dynamic>;
-    final rawMeasurements = profile['latest_measurements'];
     return AccountSession(
       token: response['token'] as String,
       email: profile['email'] as String,
       heightCm: (profile['height_cm'] as num).toDouble(),
       name: profile['name'] as String?,
       avatarBase64: profile['avatar_base64'] as String?,
-      measurements: rawMeasurements is Map<String, dynamic>
-          ? rawMeasurements.map(
-              (key, value) => MapEntry(key, (value as num).toDouble()),
-            )
-          : null,
+      measurements: measurementsFromJson(profile['latest_measurements']),
       sizeLabel: profile['size_label'] as String?,
     );
   }
@@ -113,11 +119,8 @@ class PreferencesSessionStore implements SessionStore {
     Map<String, double>? measurements;
     if (encodedMeasurements != null) {
       try {
-        final decoded = jsonDecode(encodedMeasurements) as Map<String, dynamic>;
-        measurements = decoded.map(
-          (key, value) => MapEntry(key, (value as num).toDouble()),
-        );
-      } on Exception {
+        measurements = measurementsFromJson(jsonDecode(encodedMeasurements));
+      } on FormatException {
         measurements = null;
       }
     }

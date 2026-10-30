@@ -57,14 +57,12 @@ class FashionNewsService:
                     )
                 )
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            gdelt_items = self._successful_items(results[0])
-            google_items = self._successful_items(results[1])
-            publisher_items = self._successful_items(results[2])
-            reddit_items = (
-                self._successful_items(results[3])
-                if reddit_token and len(results) > 3
-                else []
-            )
+            gdelt_result, google_result, publisher_result = results[:3]
+            reddit_result = results[3] if reddit_token and len(results) > 3 else None
+            gdelt_items = self._successful_items(gdelt_result)
+            google_items = self._successful_items(google_result)
+            publisher_items = self._successful_items(publisher_result)
+            reddit_items = self._successful_items(reddit_result)
             merged = self._merge(
                 publisher_items,
                 gdelt_items,
@@ -79,41 +77,37 @@ class FashionNewsService:
             fetched_at=datetime.now(UTC),
             items=merged,
             sources=[
-                NewsSourceStatus(
-                    name="Google News",
-                    connected=bool(google_items),
-                    note=(
-                        "Live RSS stories"
-                        if google_items
-                        else "Temporarily unavailable; pull to retry"
-                    ),
+                self._source_status(
+                    "Google News",
+                    google_result,
+                    live="Live RSS stories",
+                    unavailable="Temporarily unavailable; pull to retry",
                 ),
-                NewsSourceStatus(
-                    name="Fashion publishers",
-                    connected=bool(publisher_items),
-                    note=(
-                        "Live Vogue, Fashionista, and ELLE feeds"
-                        if publisher_items
-                        else "Publisher feeds are temporarily unavailable"
-                    ),
+                self._source_status(
+                    "Fashion publishers",
+                    publisher_result,
+                    live="Live Vogue, Fashionista, and ELLE feeds",
+                    unavailable="Publisher feeds are temporarily unavailable",
                 ),
-                NewsSourceStatus(
-                    name="Global publishers",
-                    connected=bool(gdelt_items),
-                    note=(
-                        "Live via GDELT"
-                        if gdelt_items
-                        else "GDELT is temporarily unavailable"
-                    ),
+                self._source_status(
+                    "Global publishers",
+                    gdelt_result,
+                    live="Live via GDELT",
+                    unavailable="GDELT is temporarily unavailable",
                 ),
-                NewsSourceStatus(
-                    name="Reddit",
-                    connected=bool(reddit_items),
-                    note=(
-                        "Connected with approved OAuth access"
-                        if reddit_items
-                        else "Requires REDDIT_ACCESS_TOKEN and approved API access"
-                    ),
+                (
+                    self._source_status(
+                        "Reddit",
+                        reddit_result,
+                        live="Connected with approved OAuth access",
+                        unavailable="Reddit is temporarily unavailable",
+                    )
+                    if reddit_token
+                    else NewsSourceStatus(
+                        name="Reddit",
+                        connected=False,
+                        note="Requires REDDIT_ACCESS_TOKEN and approved API access",
+                    )
                 ),
                 NewsSourceStatus(
                     name="Facebook + Instagram",
@@ -196,6 +190,7 @@ class FashionNewsService:
             return_exceptions=True,
         )
         posts: list[FashionNewsPost] = []
+        readable_feeds = 0
         search_terms = (
             set()
             if category == "all"
@@ -209,6 +204,7 @@ class FashionNewsService:
                 root = ElementTree.fromstring(response.content)
             except ElementTree.ParseError:
                 continue
+            readable_feeds += 1
             for item in root.findall(".//item"):
                 title = (item.findtext("title") or "").strip()
                 url = (item.findtext("link") or "").strip()
@@ -233,6 +229,8 @@ class FashionNewsService:
                 )
                 if len(posts) >= limit:
                     return posts
+        if not readable_feeds:
+            raise RuntimeError("No publisher feed could be read")
         return posts
 
     async def _fetch_gdelt(
@@ -413,6 +411,21 @@ class FashionNewsService:
                 if len(unique) >= limit:
                     return list(unique.values())
         return list(unique.values())
+
+    @staticmethod
+    def _source_status(
+        name: str, result: object, *, live: str, unavailable: str
+    ) -> NewsSourceStatus:
+        """Separate a failed source from a healthy one with no matching stories."""
+        if not isinstance(result, list):
+            return NewsSourceStatus(name=name, connected=False, note=unavailable)
+        if not result:
+            return NewsSourceStatus(
+                name=name,
+                connected=True,
+                note="Connected; no stories match this category right now",
+            )
+        return NewsSourceStatus(name=name, connected=True, note=live)
 
     @staticmethod
     def _successful_items(result: object) -> list[FashionNewsPost]:
