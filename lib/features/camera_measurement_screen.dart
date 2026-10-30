@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart' as picker;
 
 import '../services/seamly_api.dart';
 import '../services/person_segmentation.dart';
+import '../services/session_store.dart';
 import '../theme/seamly_theme.dart';
 import '../widgets/common.dart';
 import 'camera_capture_view.dart';
@@ -422,9 +423,8 @@ if (state == AppLifecycleState.inactive) {
         referenceHeightCm: widget.referenceHeightCm!,
       );
       if (!_currentScan(generation)) return;
-      final measurements = (result['measurements'] as Map<String, dynamic>).map(
-        (key, value) => MapEntry(key, (value as num).toDouble()),
-      );
+      final measurements =
+          measurementsFromJson(result['measurements']) ?? <String, double>{};
       if (result['person_detected'] == false) {
         throw const ApiException(
           'No full-body person was detected. Retake the photo with one person visible from head to toe.',
@@ -489,7 +489,8 @@ if (state == AppLifecycleState.inactive) {
     if (_busy) return;
     _scanGeneration++;
     _stopPreviewLoop();
-    _consecutiveScanFailures = 0;
+    // Keep _consecutiveScanFailures: fail -> retake -> fail must reach the
+    // two-failure help tip. A successful scan or leaving the tab resets it.
     setState(() {
       _photoBytes = null;
       _result = null;

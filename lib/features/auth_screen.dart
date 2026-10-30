@@ -15,10 +15,14 @@ class AuthScreen extends StatefulWidget {
     required this.api,
     required this.onAuthenticated,
     this.notice,
+    this.signInWithGoogle = GoogleSignInService.signInWithGoogle,
   });
 
   final SeamlyApi api;
   final String? notice;
+
+  /// Native Google sign-in returning an ID token; replaceable in tests.
+  final Future<String> Function() signInWithGoogle;
   final Future<void> Function(AccountSession session, bool isNewAccount)
   onAuthenticated;
 
@@ -115,6 +119,12 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _handleGoogleIdToken(String idToken) async {
     if (_googleLoading) return;
     setState(() => _googleLoading = true);
+    await _exchangeGoogleIdToken(idToken);
+  }
+
+  /// Sends an accepted Google identity to the API. The caller owns setting
+  /// [_googleLoading]; this always releases it so the button never stays busy.
+  Future<void> _exchangeGoogleIdToken(String idToken) async {
     try {
       final response = await widget.api.loginWithGoogle(idToken: idToken);
       if (!mounted) return;
@@ -127,7 +137,15 @@ class _AuthScreenState extends State<AuthScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error.message)));
-      setState(() => _googleLoading = false);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Google sign-in failed. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _googleLoading = false);
     }
   }
 
@@ -135,8 +153,8 @@ class _AuthScreenState extends State<AuthScreen> {
     if (_loading || _googleLoading) return;
     setState(() => _googleLoading = true);
     try {
-      final idToken = await GoogleSignInService.signInWithGoogle();
-      await _handleGoogleIdToken(idToken);
+      final idToken = await widget.signInWithGoogle();
+      await _exchangeGoogleIdToken(idToken);
     } on GoogleSignInException catch (error) {
       if (!mounted) return;
       final message = switch (error.code) {

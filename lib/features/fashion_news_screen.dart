@@ -57,7 +57,6 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
   Future<void> _loadFeed() async {
     final requestSerial = ++_requestSerial;
     setState(() {
-      _hasLoaded = true;
       _loading = true;
       _error = null;
     });
@@ -82,6 +81,8 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
           .toList();
       if (!mounted || requestSerial != _requestSerial) return;
       setState(() {
+        // Only a completed load counts; a failure retries on the next visit.
+        _hasLoaded = true;
         _posts = items;
         _sources = sources;
         _fetchedAt = items.isEmpty
@@ -93,8 +94,9 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
       });
     } on ApiException catch (error) {
       if (!mounted || requestSerial != _requestSerial) return;
+      // Keep this category's last good stories (and their fetch time) on a
+      // failed refresh; a category switch has already cleared them.
       setState(() {
-        _posts = const [];
         _sources = const [
           NewsSourceStatus(
             name: 'Live service',
@@ -107,7 +109,6 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
     } on Exception {
       if (!mounted || requestSerial != _requestSerial) return;
       setState(() {
-        _posts = const [];
         _sources = const [
           NewsSourceStatus(
             name: 'Live service',
@@ -126,7 +127,14 @@ class _FashionNewsScreenState extends State<FashionNewsScreen> {
 
   void _selectCategory(_NewsCategory category) {
     if (category == _selectedCategory) return;
-    setState(() => _selectedCategory = category);
+    // Clear the old category so its stories and source status are never
+    // shown under the new category's label while it loads.
+    setState(() {
+      _selectedCategory = category;
+      _posts = const [];
+      _sources = const [];
+      _fetchedAt = null;
+    });
     _loadFeed();
   }
 

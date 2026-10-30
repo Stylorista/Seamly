@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -444,6 +446,58 @@ void main() {
     expect(find.text('Y2K fashion update'), findsOneWidget);
   });
 
+  testWidgets('switching news category hides the old stories while loading', (
+    tester,
+  ) async {
+    _useMobileTestViewport(tester);
+    final api = _ControlledNewsApi();
+    await tester.pumpWidget(
+      SeamlyApp(
+        api: api,
+        initiallyAuthenticated: true,
+        sessionStore: MemorySessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('home-nav-News')));
+    await tester.pumpAndSettle();
+    expect(find.text('ALL fashion update'), findsOneWidget);
+
+    api.hold = Completer<void>();
+    await tester.tap(find.byKey(const ValueKey('news-category-y2k')));
+    await tester.pump();
+    expect(find.text('ALL fashion update'), findsNothing);
+
+    api.hold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Y2K fashion update'), findsOneWidget);
+  });
+
+  testWidgets('a failed first news load retries when the tab is reopened', (
+    tester,
+  ) async {
+    _useMobileTestViewport(tester);
+    final api = _ControlledNewsApi()..failNext = true;
+    await tester.pumpWidget(
+      SeamlyApp(
+        api: api,
+        initiallyAuthenticated: true,
+        sessionStore: MemorySessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('home-nav-News')));
+    await tester.pumpAndSettle();
+    expect(find.text('ALL fashion update'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('home-nav-Home')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('home-nav-News')));
+    await tester.pumpAndSettle();
+    expect(api.newsCalls, 2);
+    expect(find.text('ALL fashion update'), findsOneWidget);
+  });
+
   testWidgets('profile tab opens the curated feature hub', (tester) async {
     _useMobileTestViewport(tester);
     await tester.pumpWidget(
@@ -520,6 +574,26 @@ void main() {
 }
 
 void _ignore() {}
+
+class _ControlledNewsApi extends _FakeNewsApi {
+  Completer<void>? hold;
+  bool failNext = false;
+  int newsCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> fetchFashionNews({
+    required String category,
+    int limit = 16,
+  }) async {
+    newsCalls++;
+    if (failNext) {
+      failNext = false;
+      throw const ApiException('The live fashion feed is waking up.');
+    }
+    await hold?.future;
+    return super.fetchFashionNews(category: category, limit: limit);
+  }
+}
 
 class _FakeNewsApi extends SeamlyApi {
   String? lastCategory;
