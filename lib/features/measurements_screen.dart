@@ -8,12 +8,20 @@ class MeasurementsScreen extends StatefulWidget {
   const MeasurementsScreen({
     super.key,
     required this.api,
-    required this.onSizeRecommended,
+    required this.onMeasurementsSaved,
+    this.referenceHeightCm,
     this.initialMeasurements,
   });
 
   final SeamlyApi api;
-  final ValueChanged<String> onSizeRecommended;
+
+  /// Called with the submitted values and the size calculated for them.
+  final Future<void> Function(Map<String, double> measurements, String size)
+  onMeasurementsSaved;
+
+  /// The account height. Saved measurements must use it, so it is shown
+  /// read-only here and changed from the account screen.
+  final double? referenceHeightCm;
   final Map<String, double>? initialMeasurements;
 
   @override
@@ -22,19 +30,19 @@ class MeasurementsScreen extends StatefulWidget {
 
 class _MeasurementsScreenState extends State<MeasurementsScreen> {
   final _formKey = GlobalKey<FormState>();
-  static const _defaults = <String, String>{
-    'height': '165',
-    'neck': '35',
-    'shoulder': '40',
-    'chest': '94',
-    'underbust': '85',
-    'waist': '77',
-    'high_hip': '96',
-    'hip': '103',
-    'sleeve': '59',
-    'wrist': '16',
-    'inseam': '76',
-  };
+  static const _fields = [
+    'height',
+    'neck',
+    'shoulder',
+    'chest',
+    'underbust',
+    'waist',
+    'high_hip',
+    'hip',
+    'sleeve',
+    'wrist',
+    'inseam',
+  ];
   late final Map<String, TextEditingController> _controllers;
   String _fitPreference = 'regular';
   bool _loading = false;
@@ -44,14 +52,18 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   @override
   void initState() {
     super.initState();
+    // Start from the user's real values; never prefill sample numbers.
     _controllers = {
-      for (final entry in _defaults.entries)
-        entry.key: TextEditingController(
-          text:
-              widget.initialMeasurements?[entry.key]?.toStringAsFixed(1) ??
-              entry.value,
-        ),
+      for (final key in _fields)
+        key: TextEditingController(text: _initialText(key)),
     };
+  }
+
+  String _initialText(String key) {
+    final value = key == 'height' && widget.referenceHeightCm != null
+        ? widget.referenceHeightCm
+        : widget.initialMeasurements?[key];
+    return value?.toStringAsFixed(1) ?? '';
   }
 
   @override
@@ -59,8 +71,8 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.initialMeasurements, widget.initialMeasurements) &&
         widget.initialMeasurements != null) {
-      for (final entry in widget.initialMeasurements!.entries) {
-        _controllers[entry.key]?.text = entry.value.toStringAsFixed(1);
+      for (final key in _fields) {
+        _controllers[key]!.text = _initialText(key);
       }
     }
   }
@@ -91,7 +103,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       );
       if (!mounted) return;
       setState(() => _result = result);
-      widget.onSizeRecommended(result['recommended_size'] as String);
+      await widget.onMeasurementsSaved(
+        measurements,
+        result['recommended_size'] as String,
+      );
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } finally {
@@ -148,6 +163,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                               helper: 'Floor to crown',
                               controller: _controllers['height']!,
                               isRequired: true,
+                              readOnly: widget.referenceHeightCm != null,
                               min: 120,
                               max: 230,
                             ),
@@ -253,7 +269,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         const SizedBox(height: 24),
                         LoadingButton(
                           loading: _loading,
-                          label: 'Recommend my starting size',
+                          label: 'Save and recommend my size',
                           icon: Icons.straighten,
                           onPressed: _submit,
                         ),
@@ -287,6 +303,7 @@ class _MeasurementField extends StatelessWidget {
     required this.min,
     required this.max,
     this.isRequired = false,
+    this.readOnly = false,
   });
 
   final String label;
@@ -295,6 +312,7 @@ class _MeasurementField extends StatelessWidget {
   final double min;
   final double max;
   final bool isRequired;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -302,10 +320,11 @@ class _MeasurementField extends StatelessWidget {
       width: 230,
       child: TextFormField(
         controller: controller,
+        readOnly: readOnly,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           labelText: label,
-          helperText: helper,
+          helperText: readOnly ? 'From your profile' : helper,
           suffixText: 'cm',
         ),
         validator: (value) {
@@ -364,11 +383,13 @@ class _SizeResult extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    '$confidence% model confidence',
-                    style: const TextStyle(color: Colors.white70),
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      '$confidence% model confidence',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
                   ),
                 ),
               ],

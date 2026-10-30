@@ -412,35 +412,82 @@ class _SeamlyShellState extends State<SeamlyShell> {
 
   Future<void> _saveScanMeasurements(Map<String, double> values) async {
     final revision = ++_scanRevision;
-    final token = widget.accountToken;
-    setState(() => _scannedMeasurements = values);
-    var savedSize = _sizeLabel;
+    // Never show the previous size beside new measurements.
+    setState(() {
+      _scannedMeasurements = values;
+      _sizeLabel = null;
+    });
+    String? size;
     try {
       final result = await widget.api.recommendSize(
         measurements: values,
         fitPreference: 'regular',
       );
-      savedSize = result['recommended_size'] as String;
-      if (mounted && revision == _scanRevision) {
-        setState(() => _sizeLabel = savedSize);
-      }
+      size = result['recommended_size'] as String;
     } on ApiException {
-      // The scan remains useful even if the optional size follow-up is offline.
+      // The scan is still saved; the size is recalculated on the next save.
     }
     if (!mounted || revision != _scanRevision) return;
+    await _persistMeasurements(values, size, revision);
+    if (mounted && revision == _scanRevision && size == null) {
+      _showSaveMessage(
+        'Measurements saved, but the size could not be calculated. '
+        'Open My fit to try again.',
+      );
+    }
+  }
+
+  Future<void> _saveManualMeasurements(
+    Map<String, double> values,
+    String size,
+  ) async {
+    final revision = ++_scanRevision;
+    await _persistMeasurements(values, size, revision);
+  }
+
+  /// One save path for scanned and typed measurements: show them, keep them on
+  /// this phone first, then sync to the account and say so if that fails.
+  Future<void> _persistMeasurements(
+    Map<String, double> values,
+    String? size,
+    int revision,
+  ) async {
+    setState(() {
+      _scannedMeasurements = values;
+      _sizeLabel = size;
+    });
     try {
-      if (token != null) {
-        await widget.api.saveAccountMeasurements(
-          token: token,
-          measurements: values,
-          sizeLabel: savedSize,
+      await widget.sessionStore.saveMeasurementProfile(values, size);
+    } on Exception {
+      // Cloud sync below still runs; the values stay on screen.
+    }
+    final token = widget.accountToken;
+    if (token == null) return;
+    try {
+      await widget.api.saveAccountMeasurements(
+        token: token,
+        measurements: values,
+        sizeLabel: size,
+      );
+    } on ApiException catch (error) {
+      if (mounted && revision == _scanRevision) {
+        _showSaveMessage(
+          'Saved on this phone, but not to your account: ${error.message}',
         );
       }
-      if (!mounted || revision != _scanRevision) return;
-      await widget.sessionStore.saveMeasurementProfile(values, savedSize);
     } on Exception {
-      // Keep the accepted measurements on screen if cloud sync is unavailable.
+      if (mounted && revision == _scanRevision) {
+        _showSaveMessage(
+          'Saved on this phone, but not to your account. Check your connection.',
+        );
+      }
     }
+  }
+
+  void _showSaveMessage(String message) {
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -492,8 +539,9 @@ class _SeamlyShellState extends State<SeamlyShell> {
       MeasurementsScreen(
         key: ValueKey('measurements-height-${widget.referenceHeightCm}'),
         api: widget.api,
+        referenceHeightCm: widget.referenceHeightCm,
         initialMeasurements: _scannedMeasurements,
-        onSizeRecommended: (value) => setState(() => _sizeLabel = value),
+        onMeasurementsSaved: _saveManualMeasurements,
       ),
       ColorAnalysisScreen(
         api: widget.api,
