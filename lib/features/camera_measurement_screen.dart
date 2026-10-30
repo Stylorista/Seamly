@@ -25,6 +25,8 @@ class CameraMeasurementScreen extends StatefulWidget {
     this.onOpenAccount,
     this.avatarBase64,
     this.segmenter,
+    this.heightConfirmed = true,
+    this.onConfirmHeight,
   });
 
   final SeamlyApi api;
@@ -37,6 +39,12 @@ class CameraMeasurementScreen extends StatefulWidget {
   final VoidCallback? onOpenAccount;
   final String? avatarBase64;
   final PersonSegmentation? segmenter;
+
+  /// False until the person confirms [referenceHeightCm] is their real height.
+  final bool heightConfirmed;
+
+  /// Confirms the saved height with the account; throws [ApiException].
+  final Future<void> Function()? onConfirmHeight;
 
   @override
   State<CameraMeasurementScreen> createState() =>
@@ -119,10 +127,10 @@ class _CameraMeasurementScreenState extends State<CameraMeasurementScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!widget.active) return;
-if (state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.inactive) {
       _stopPreviewLoop();
       unawaited(_disposeCamera());
-} else if (state == AppLifecycleState.resumed &&
+    } else if (state == AppLifecycleState.resumed &&
         _instructionsAccepted &&
         _photoBytes == null &&
         !_capturing) {
@@ -288,6 +296,24 @@ if (state == AppLifecycleState.inactive) {
         : camera.CameraLensDirection.front;
     await _disposeCamera();
     if (mounted && widget.active) await _startCamera(lens: next);
+  }
+
+  bool _confirmingHeight = false;
+
+  Future<void> _confirmHeight() async {
+    final confirm = widget.onConfirmHeight;
+    if (confirm == null || _confirmingHeight) return;
+    setState(() {
+      _confirmingHeight = true;
+      _error = null;
+    });
+    try {
+      await confirm();
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _confirmingHeight = false);
+    }
   }
 
   bool get _hasValidCalibration {
@@ -635,6 +661,12 @@ if (state == AppLifecycleState.inactive) {
                           const SizedBox(height: 12),
                           _ScanPreparationCard(
                             referenceHeightCm: widget.referenceHeightCm,
+                            heightConfirmed: widget.heightConfirmed,
+                            confirmingHeight: _confirmingHeight,
+                            onConfirmHeight: widget.onConfirmHeight == null
+                                ? null
+                                : _confirmHeight,
+                            onChangeHeight: widget.onOpenAccount,
                             preparationConfirmed: _preparationConfirmed,
                             consentConfirmed: _consentConfirmed,
                             onPreparationChanged: (value) => setState(
@@ -665,6 +697,10 @@ if (state == AppLifecycleState.inactive) {
 class _ScanPreparationCard extends StatelessWidget {
   const _ScanPreparationCard({
     required this.referenceHeightCm,
+    required this.heightConfirmed,
+    required this.confirmingHeight,
+    required this.onConfirmHeight,
+    required this.onChangeHeight,
     required this.preparationConfirmed,
     required this.consentConfirmed,
     required this.onPreparationChanged,
@@ -673,6 +709,10 @@ class _ScanPreparationCard extends StatelessWidget {
   });
 
   final double? referenceHeightCm;
+  final bool heightConfirmed;
+  final bool confirmingHeight;
+  final VoidCallback? onConfirmHeight;
+  final VoidCallback? onChangeHeight;
   final bool preparationConfirmed;
   final bool consentConfirmed;
   final ValueChanged<bool?> onPreparationChanged;
@@ -746,9 +786,11 @@ class _ScanPreparationCard extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _hasValidHeight
+                      !_hasValidHeight
+                          ? 'Add a verified height to your profile before starting the scan.'
+                          : heightConfirmed
                           ? 'Saved height: ${referenceHeightCm!.toStringAsFixed(0)} cm. This calibrates the measurement estimates.'
-                          : 'Add a verified height to your profile before starting the scan.',
+                          : 'Is ${referenceHeightCm!.toStringAsFixed(0)} cm your real height? The scan uses it to size you, so confirm it first.',
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -758,6 +800,29 @@ class _ScanPreparationCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (_hasValidHeight && !heightConfirmed) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonal(
+                    key: const ValueKey('confirm-height-button'),
+                    onPressed: confirmingHeight ? null : onConfirmHeight,
+                    child: Text(
+                      confirmingHeight
+                          ? 'Confirming…'
+                          : "Yes, that's my height",
+                    ),
+                  ),
+                  OutlinedButton(
+                    key: const ValueKey('change-height-button'),
+                    onPressed: confirmingHeight ? null : onChangeHeight,
+                    child: const Text('Change'),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             CheckboxListTile(
               key: const ValueKey('scan-preparation-checkbox'),
@@ -784,7 +849,7 @@ class _ScanPreparationCard extends StatelessWidget {
             const SizedBox(height: 8),
             FilledButton.icon(
               key: const ValueKey('start-guided-scan-button'),
-              onPressed: _hasValidHeight ? onStart : null,
+              onPressed: _hasValidHeight && heightConfirmed ? onStart : null,
               icon: const Icon(Icons.photo_camera_rounded),
               label: const Text('Open camera for body scan'),
               style: FilledButton.styleFrom(

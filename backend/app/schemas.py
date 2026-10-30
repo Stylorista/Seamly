@@ -61,6 +61,7 @@ class AccountProfile(BaseModel):
     phone: str | None = None
     location: str | None = None
     height_cm: float = Field(ge=120, le=230)
+    height_confirmed: bool = False
     latest_measurements: Measurements | None = None
     size_label: str | None = None
     scan_confidence: float | None = Field(default=None, ge=0, le=1)

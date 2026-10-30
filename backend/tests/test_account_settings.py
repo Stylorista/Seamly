@@ -115,6 +115,20 @@ def test_additive_picture_schema_preserves_legacy_accounts(tmp_path):
     store = AccountStore(path)
     token, profile = store.login(email="legacy@example.com", password="legacy-password")
     assert profile["avatar_base64"] is None
+    # Legacy heights may be the old default, so they must be confirmed first.
+    assert profile["height_confirmed"] is False
     updated = store.update_profile(token=token, name="Legacy", height_cm=171)
     assert updated["id"] == "legacy-user"
     assert updated["height_cm"] == 171
+    assert updated["height_confirmed"] is True
+
+
+def test_height_starts_unconfirmed_until_the_profile_is_saved(accounts):
+    client, (alice, bob) = accounts
+    assert client.get("/v1/account/profile", headers=alice).json()["height_confirmed"] is False
+    confirmed = client.put("/v1/account/profile", headers=alice, json={"name": "Alice", "height_cm": 165})
+    assert confirmed.status_code == 200
+    assert confirmed.json()["height_confirmed"] is True
+    login = client.post("/v1/auth/login", json={"email": "alice@example.com", "password": "test-only-password"})
+    assert login.json()["profile"]["height_confirmed"] is True
+    assert client.get("/v1/account/profile", headers=bob).json()["height_confirmed"] is False

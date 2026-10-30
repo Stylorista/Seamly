@@ -533,6 +533,7 @@ void main() {
         token: 'scan-test-token',
         email: 'style@example.com',
         heightCm: 165,
+        heightConfirmed: true,
       ),
     );
     await tester.pumpWidget(SeamlyApp(sessionStore: sessionStore));

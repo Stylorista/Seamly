@@ -20,6 +20,7 @@ const _initial = SessionState(
   heightCm: 165,
   measurements: _saved,
   sizeLabel: 'M',
+  heightConfirmed: true,
 );
 final _photo = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7l8AAAAASUVORK5CYII=',
@@ -99,6 +100,48 @@ void main() {
     await tester.tap(find.byTooltip('Choose photo'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('an unconfirmed height locks the scan until confirmed', (
+    tester,
+  ) async {
+    final api = _FitApi()..heightConfirmed = false;
+    final store = await openApp(
+      tester,
+      api,
+      store: MemorySessionStore(
+        initialState: const SessionState(
+          authenticated: true,
+          welcomeCompleted: true,
+          token: 'account-token',
+          email: 'person@example.com',
+          name: 'Test Person',
+          heightCm: 165,
+          measurements: _saved,
+          sizeLabel: 'M',
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('home-nav-Scan')));
+    await tester.pumpAndSettle();
+    final start = find.byKey(const ValueKey('start-guided-scan-button'));
+    for (final key in ['scan-preparation-checkbox', 'scan-consent-checkbox']) {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pump();
+    }
+    expect(find.textContaining('Is 165 cm your real height?'), findsOneWidget);
+    expect(tester.widget<FilledButton>(start).onPressed, isNull);
+
+    final confirm = find.byKey(const ValueKey('confirm-height-button'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(api.confirmCalls, 1);
+    expect(find.byKey(const ValueKey('confirm-height-button')), findsNothing);
+    expect(tester.widget<FilledButton>(start).onPressed, isNotNull);
+    expect((await store.read()).heightConfirmed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('the form starts empty instead of sample measurements', (
     tester,
@@ -227,6 +270,8 @@ class _FitApi extends SeamlyApi {
   bool failSize = false;
   bool failSync = false;
   double serverHeight = 165;
+  bool heightConfirmed = true;
+  int confirmCalls = 0;
   final synced = <Map<String, double>>[];
   final syncedSizes = <String?>[];
 
@@ -237,10 +282,25 @@ class _FitApi extends SeamlyApi {
     'name': 'Test Person',
     'email': 'person@example.com',
     'height_cm': serverHeight,
+    'height_confirmed': heightConfirmed,
     'avatar_base64': null,
     'latest_measurements': serverHeight == 165 ? _saved : null,
     'size_label': serverHeight == 165 ? 'M' : null,
   };
+
+  @override
+  Future<Map<String, dynamic>> updateAccountProfile({
+    required String token,
+    required String name,
+    required double heightCm,
+    String? avatarBase64,
+    bool updateAvatar = false,
+  }) async {
+    confirmCalls++;
+    heightConfirmed = true;
+    serverHeight = heightCm;
+    return fetchAccountProfile(token: token);
+  }
 
   @override
   Future<Map<String, dynamic>> recommendSize({

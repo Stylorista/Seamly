@@ -64,4 +64,19 @@ void main() {
       );
     },
   );
+
+  test('only an explicit false marks the height unconfirmed', () {
+    AccountSession session(Map<String, dynamic> extra) =>
+        AccountSession.fromApi({
+          'token': 'token',
+          'profile': {
+            'email': 'person@example.com',
+            'height_cm': 165,
+            ...extra,
+          },
+        });
+    expect(session({'height_confirmed': false}).heightConfirmed, isFalse);
+    expect(session({'height_confirmed': true}).heightConfirmed, isTrue);
+    expect(session({}).heightConfirmed, isTrue);
+  });
 }

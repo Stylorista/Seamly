@@ -22,6 +22,7 @@ class AccountSession {
     this.avatarBase64,
     this.measurements,
     this.sizeLabel,
+    this.heightConfirmed = false,
   });
 
   factory AccountSession.fromApi(Map<String, dynamic> response) {
@@ -34,6 +35,9 @@ class AccountSession {
       avatarBase64: profile['avatar_base64'] as String?,
       measurements: measurementsFromJson(profile['latest_measurements']),
       sizeLabel: profile['size_label'] as String?,
+      // Servers older than the height_confirmed field never asked, so only an
+      // explicit false locks scans (keeps old backends usable).
+      heightConfirmed: profile['height_confirmed'] != false,
     );
   }
 
@@ -44,6 +48,10 @@ class AccountSession {
   final String? avatarBase64;
   final Map<String, double>? measurements;
   final String? sizeLabel;
+
+  /// Whether the person confirmed [heightCm]; older accounts may hold a
+  /// placeholder height that must not calibrate a scan.
+  final bool heightConfirmed;
 }
 
 class SessionState {
@@ -58,6 +66,7 @@ class SessionState {
     this.measurements,
     this.sizeLabel,
     this.measurementsPendingSync = false,
+    this.heightConfirmed = false,
   });
 
   const SessionState.signedOut()
@@ -70,7 +79,8 @@ class SessionState {
       avatarBase64 = null,
       measurements = null,
       sizeLabel = null,
-      measurementsPendingSync = false;
+      measurementsPendingSync = false,
+      heightConfirmed = false;
 
   final bool authenticated;
   final bool welcomeCompleted;
@@ -85,6 +95,7 @@ class SessionState {
   /// True when [measurements] were saved on this phone but not yet accepted by
   /// the account API, so a server refresh must not overwrite them.
   final bool measurementsPendingSync;
+  final bool heightConfirmed;
 }
 
 abstract interface class SessionStore {
@@ -117,6 +128,7 @@ class PreferencesSessionStore implements SessionStore {
   static const _measurementsKey = 'seamly.measurements';
   static const _sizeLabelKey = 'seamly.size_label';
   static const _pendingSyncKey = 'seamly.measurements_pending_sync';
+  static const _heightConfirmedKey = 'seamly.height_confirmed';
 
   final Future<SharedPreferences> _preferences;
 
@@ -144,6 +156,7 @@ class PreferencesSessionStore implements SessionStore {
       measurements: measurements,
       sizeLabel: preferences.getString(_sizeLabelKey),
       measurementsPendingSync: preferences.getBool(_pendingSyncKey) ?? false,
+      heightConfirmed: preferences.getBool(_heightConfirmedKey) ?? false,
     );
   }
 
@@ -161,6 +174,7 @@ class PreferencesSessionStore implements SessionStore {
       await preferences.remove(_measurementsKey);
       await preferences.remove(_sizeLabelKey);
       await preferences.remove(_pendingSyncKey);
+      await preferences.remove(_heightConfirmedKey);
     }
   }
 
@@ -171,6 +185,7 @@ class PreferencesSessionStore implements SessionStore {
     await preferences.setString(_tokenKey, session.token);
     await preferences.setString(_emailKey, session.email);
     await preferences.setDouble(_heightKey, session.heightCm);
+    await preferences.setBool(_heightConfirmedKey, session.heightConfirmed);
     for (final entry in {
       _nameKey: session.name,
       _avatarKey: session.avatarBase64,
@@ -230,7 +245,8 @@ class MemorySessionStore implements SessionStore {
        _avatarBase64 = initialState.avatarBase64,
        _measurements = initialState.measurements,
        _sizeLabel = initialState.sizeLabel,
-       _pendingSync = initialState.measurementsPendingSync;
+       _pendingSync = initialState.measurementsPendingSync,
+       _heightConfirmed = initialState.heightConfirmed;
 
   bool _authenticated;
   bool _welcomeCompleted;
@@ -242,6 +258,7 @@ class MemorySessionStore implements SessionStore {
   Map<String, double>? _measurements;
   String? _sizeLabel;
   bool _pendingSync;
+  bool _heightConfirmed;
 
   @override
   Future<SessionState> read() async {
@@ -256,6 +273,7 @@ class MemorySessionStore implements SessionStore {
       measurements: _measurements,
       sizeLabel: _sizeLabel,
       measurementsPendingSync: _pendingSync,
+      heightConfirmed: _heightConfirmed,
     );
   }
 
@@ -272,6 +290,7 @@ class MemorySessionStore implements SessionStore {
       _measurements = null;
       _sizeLabel = null;
       _pendingSync = false;
+      _heightConfirmed = false;
     }
   }
 
@@ -286,6 +305,7 @@ class MemorySessionStore implements SessionStore {
     _measurements = session.measurements;
     _sizeLabel = session.sizeLabel;
     _pendingSync = false;
+    _heightConfirmed = session.heightConfirmed;
   }
 
   @override

@@ -124,6 +124,7 @@ class _AuthGateState extends State<AuthGate> {
           avatarBase64: session.avatarBase64,
           measurements: session.measurements,
           sizeLabel: session.sizeLabel,
+          heightConfirmed: session.heightConfirmed,
         );
       }
       _ready = true;
@@ -440,6 +441,26 @@ class _SeamlyShellState extends State<SeamlyShell> {
     );
   }
 
+  /// Records that the saved account height is the person's real height.
+  Future<void> _confirmHeight() async {
+    final account = widget.account;
+    final onSaved = widget.onAccountSaved;
+    final name = account?.name?.trim() ?? '';
+    if (account == null || onSaved == null || name.length < 2) {
+      // The profile editor collects the missing details and confirms height.
+      await _openAccount();
+      return;
+    }
+    final profile = await widget.api.updateAccountProfile(
+      token: account.token,
+      name: name,
+      heightCm: account.heightCm,
+    );
+    await onSaved(
+      AccountSession.fromApi({'token': account.token, 'profile': profile}),
+    );
+  }
+
   void _selectPage(int index) {
     if (index == _selectedIndex) return;
     setState(() => _selectedIndex = index);
@@ -568,6 +589,9 @@ class _SeamlyShellState extends State<SeamlyShell> {
         onOpenShop: () => _selectPage(1),
         onOpenAccount: _openAccount,
         avatarBase64: widget.account?.avatarBase64,
+        // Without an account there is no saved height to confirm.
+        heightConfirmed: widget.account?.heightConfirmed ?? true,
+        onConfirmHeight: _confirmHeight,
       ),
       FashionNewsScreen(api: widget.api, active: _selectedIndex == 3),
       ProfileScreen(

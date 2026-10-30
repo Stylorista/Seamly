@@ -169,7 +169,8 @@ class AccountStore:
                 """
                 SELECT
                     users.id, users.name, users.email, users.phone,
-                    users.location, users.height_cm, account_pictures.avatar_base64,
+                    users.location, users.height_cm, users.height_confirmed,
+                    account_pictures.avatar_base64,
                     measurement_profiles.measurements_json,
                     measurement_profiles.size_label,
                     measurement_profiles.scan_confidence,
@@ -198,6 +199,7 @@ class AccountStore:
             "phone": row["phone"],
             "location": row["location"],
             "height_cm": row["height_cm"],
+            "height_confirmed": bool(row["height_confirmed"]),
             "latest_measurements": measurements,
             "size_label": row["size_label"],
             "scan_confidence": row["scan_confidence"],
@@ -254,7 +256,11 @@ class AccountStore:
         with self._connect() as connection:
             # Lock the account row before checking height so concurrent saves
             # cannot restore estimates that use the previous calibration.
-            connection.execute("UPDATE users SET name = ? WHERE id = ?", (name, profile["id"]))
+            # Saving the profile means the person reviewed their height.
+            connection.execute(
+                "UPDATE users SET name = ?, height_confirmed = 1 WHERE id = ?",
+                (name, profile["id"]),
+            )
             current = connection.execute("SELECT height_cm FROM users WHERE id = ?", (profile["id"],)).fetchone()
             if float(current["height_cm"]) != height_cm:
                 connection.execute("UPDATE users SET height_cm = ? WHERE id = ?", (height_cm, profile["id"]))
@@ -286,9 +292,15 @@ class AccountStore:
         try:
             columns = [row["name"] for row in connection.execute("PRAGMA table_info(users)")]
         except Exception:
-            columns = ["google_sub"]
+            columns = ["google_sub", "height_confirmed"]
         if "google_sub" not in columns:
             connection.execute("ALTER TABLE users ADD COLUMN google_sub TEXT")
+        if "height_confirmed" not in columns:
+            # Existing heights may be the old 165 cm default, so they start
+            # unconfirmed and are confirmed before the next calibrated scan.
+            connection.execute(
+                "ALTER TABLE users ADD COLUMN height_confirmed INTEGER NOT NULL DEFAULT 0"
+            )
         connection.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx "
             "ON users(google_sub)"
@@ -463,6 +475,10 @@ class PostgresAccountStore(AccountStore):
                 )
                 connection.execute(
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT"
+                )
+                connection.execute(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                    "height_confirmed INTEGER NOT NULL DEFAULT 0"
                 )
                 connection.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx "
