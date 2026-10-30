@@ -156,7 +156,9 @@ class PreferencesSessionStore implements SessionStore {
       measurements: measurements,
       sizeLabel: preferences.getString(_sizeLabelKey),
       measurementsPendingSync: preferences.getBool(_pendingSyncKey) ?? false,
-      heightConfirmed: preferences.getBool(_heightConfirmedKey) ?? false,
+      // Sessions cached by app versions before this flag never asked;
+      // like an older API, a missing value does not lock scans.
+      heightConfirmed: preferences.getBool(_heightConfirmedKey) ?? true,
     );
   }
 

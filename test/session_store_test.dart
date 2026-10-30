@@ -79,4 +79,23 @@ void main() {
     expect(session({'height_confirmed': true}).heightConfirmed, isTrue);
     expect(session({}).heightConfirmed, isTrue);
   });
+
+  test('a session cached before the height flag does not lock scans', () async {
+    SharedPreferences.setMockInitialValues({
+      'seamly.authenticated': true,
+      'seamly.account_token': 'token',
+      'seamly.account_email': 'person@example.com',
+      'seamly.height_cm': 175.0,
+    });
+    expect((await PreferencesSessionStore().read()).heightConfirmed, isTrue);
+    final store = PreferencesSessionStore();
+    await store.saveAccountSession(
+      const AccountSession(
+        token: 'token',
+        email: 'person@example.com',
+        heightCm: 175,
+      ),
+    );
+    expect((await PreferencesSessionStore().read()).heightConfirmed, isFalse);
+  });
 }
