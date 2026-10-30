@@ -130,14 +130,42 @@ class _AuthGateState extends State<AuthGate> {
     });
     final token = session.token;
     if (session.authenticated && token != null) {
-      unawaited(_refreshAccountProfile(token));
+      unawaited(_refreshAccountProfile(token, session));
     }
   }
 
-  Future<void> _refreshAccountProfile(String token) async {
+  Future<void> _refreshAccountProfile(String token, SessionState cached) async {
     final revision = _accountRevision;
     try {
-      final profile = await widget.api.fetchAccountProfile(token: token);
+      final pending = cached.measurementsPendingSync
+          ? cached.measurements
+          : null;
+      var keepPending = false;
+      Map<String, dynamic> profile;
+      if (pending != null) {
+        try {
+          // Push this phone's newer values before trusting the server copy.
+          profile = await widget.api.saveAccountMeasurements(
+            token: token,
+            measurements: pending,
+            sizeLabel: cached.sizeLabel,
+          );
+        } on Exception {
+          profile = await widget.api.fetchAccountProfile(token: token);
+          final serverHeight = (profile['height_cm'] as num?)?.toDouble();
+          // A changed account height makes the unsynced values stale.
+          if (serverHeight != null && pending['height'] == serverHeight) {
+            keepPending = true;
+            profile = {
+              ...profile,
+              'latest_measurements': pending,
+              'size_label': cached.sizeLabel,
+            };
+          }
+        }
+      } else {
+        profile = await widget.api.fetchAccountProfile(token: token);
+      }
       final account = AccountSession.fromApi({
         'token': token,
         'profile': profile,
@@ -148,6 +176,13 @@ class _AuthGateState extends State<AuthGate> {
       await _store(() async {
         if (_accountToken == token && revision == _accountRevision) {
           await widget.sessionStore.saveAccountSession(account);
+          if (keepPending) {
+            await widget.sessionStore.saveMeasurementProfile(
+              pending!,
+              cached.sizeLabel,
+              pendingSync: true,
+            );
+          }
         }
       });
       if (!mounted || _accountToken != token || revision != _accountRevision) {
@@ -456,12 +491,18 @@ class _SeamlyShellState extends State<SeamlyShell> {
       _scannedMeasurements = values;
       _sizeLabel = size;
     });
+    final token = widget.accountToken;
     try {
-      await widget.sessionStore.saveMeasurementProfile(values, size);
+      // Marked pending until the account accepts them, so the next launch
+      // retries the sync instead of restoring the older server copy.
+      await widget.sessionStore.saveMeasurementProfile(
+        values,
+        size,
+        pendingSync: token != null,
+      );
     } on Exception {
       // Cloud sync below still runs; the values stay on screen.
     }
-    final token = widget.accountToken;
     if (token == null) return;
     try {
       await widget.api.saveAccountMeasurements(
@@ -469,16 +510,21 @@ class _SeamlyShellState extends State<SeamlyShell> {
         measurements: values,
         sizeLabel: size,
       );
+      // A newer save owns the stored values; only the latest clears pending.
+      if (revision == _scanRevision) {
+        await widget.sessionStore.saveMeasurementProfile(values, size);
+      }
     } on ApiException catch (error) {
       if (mounted && revision == _scanRevision) {
         _showSaveMessage(
-          'Saved on this phone, but not to your account: ${error.message}',
+          'Saved on this phone, but not to your account yet: ${error.message}',
         );
       }
     } on Exception {
       if (mounted && revision == _scanRevision) {
         _showSaveMessage(
-          'Saved on this phone, but not to your account. Check your connection.',
+          'Saved on this phone, but not to your account yet. '
+          'It will sync next time you open Seamly.',
         );
       }
     }
@@ -587,7 +633,9 @@ class _SeamlyShellState extends State<SeamlyShell> {
                       SeamlyHeader(
                         onOpenAccount: _openAccount,
                         avatarBase64: widget.account?.avatarBase64,
-                        onBack: _selectedIndex > 4 ? () => _selectPage(4) : null,
+                        onBack: _selectedIndex > 4
+                            ? () => _selectPage(4)
+                            : null,
                       ),
                     Expanded(child: content),
                   ],
@@ -704,9 +752,7 @@ class _BottomNavigation extends StatelessWidget {
                 message: 'AI body scan',
                 child: Material(
                   key: const ValueKey('home-nav-Scan'),
-                  color: selectedIndex == 2
-                      ? SeamlyColors.sand
-                      : Colors.white,
+                  color: selectedIndex == 2 ? SeamlyColors.sand : Colors.white,
                   elevation: 12,
                   shadowColor: Colors.black38,
                   shape: const CircleBorder(),

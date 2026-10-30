@@ -57,6 +57,7 @@ class SessionState {
     this.avatarBase64,
     this.measurements,
     this.sizeLabel,
+    this.measurementsPendingSync = false,
   });
 
   const SessionState.signedOut()
@@ -68,7 +69,8 @@ class SessionState {
       name = null,
       avatarBase64 = null,
       measurements = null,
-      sizeLabel = null;
+      sizeLabel = null,
+      measurementsPendingSync = false;
 
   final bool authenticated;
   final bool welcomeCompleted;
@@ -79,6 +81,10 @@ class SessionState {
   final String? avatarBase64;
   final Map<String, double>? measurements;
   final String? sizeLabel;
+
+  /// True when [measurements] were saved on this phone but not yet accepted by
+  /// the account API, so a server refresh must not overwrite them.
+  final bool measurementsPendingSync;
 }
 
 abstract interface class SessionStore {
@@ -90,8 +96,9 @@ abstract interface class SessionStore {
 
   Future<void> saveMeasurementProfile(
     Map<String, double> measurements,
-    String? sizeLabel,
-  );
+    String? sizeLabel, {
+    bool pendingSync = false,
+  });
 
   Future<void> setWelcomeCompleted(bool value);
 }
@@ -109,6 +116,7 @@ class PreferencesSessionStore implements SessionStore {
   static const _avatarKey = 'seamly.account_avatar';
   static const _measurementsKey = 'seamly.measurements';
   static const _sizeLabelKey = 'seamly.size_label';
+  static const _pendingSyncKey = 'seamly.measurements_pending_sync';
 
   final Future<SharedPreferences> _preferences;
 
@@ -135,6 +143,7 @@ class PreferencesSessionStore implements SessionStore {
       avatarBase64: preferences.getString(_avatarKey),
       measurements: measurements,
       sizeLabel: preferences.getString(_sizeLabelKey),
+      measurementsPendingSync: preferences.getBool(_pendingSyncKey) ?? false,
     );
   }
 
@@ -151,6 +160,7 @@ class PreferencesSessionStore implements SessionStore {
       await preferences.remove(_welcomeCompletedKey);
       await preferences.remove(_measurementsKey);
       await preferences.remove(_sizeLabelKey);
+      await preferences.remove(_pendingSyncKey);
     }
   }
 
@@ -180,8 +190,9 @@ class PreferencesSessionStore implements SessionStore {
   @override
   Future<void> saveMeasurementProfile(
     Map<String, double> measurements,
-    String? sizeLabel,
-  ) async {
+    String? sizeLabel, {
+    bool pendingSync = false,
+  }) async {
     final preferences = await _preferences;
     if (measurements.isEmpty) {
       await preferences.remove(_measurementsKey);
@@ -192,6 +203,11 @@ class PreferencesSessionStore implements SessionStore {
       await preferences.remove(_sizeLabelKey);
     } else {
       await preferences.setString(_sizeLabelKey, sizeLabel);
+    }
+    if (pendingSync) {
+      await preferences.setBool(_pendingSyncKey, true);
+    } else {
+      await preferences.remove(_pendingSyncKey);
     }
   }
 
@@ -213,7 +229,8 @@ class MemorySessionStore implements SessionStore {
        _name = initialState.name,
        _avatarBase64 = initialState.avatarBase64,
        _measurements = initialState.measurements,
-       _sizeLabel = initialState.sizeLabel;
+       _sizeLabel = initialState.sizeLabel,
+       _pendingSync = initialState.measurementsPendingSync;
 
   bool _authenticated;
   bool _welcomeCompleted;
@@ -224,6 +241,7 @@ class MemorySessionStore implements SessionStore {
   String? _avatarBase64;
   Map<String, double>? _measurements;
   String? _sizeLabel;
+  bool _pendingSync;
 
   @override
   Future<SessionState> read() async {
@@ -237,6 +255,7 @@ class MemorySessionStore implements SessionStore {
       avatarBase64: _avatarBase64,
       measurements: _measurements,
       sizeLabel: _sizeLabel,
+      measurementsPendingSync: _pendingSync,
     );
   }
 
@@ -252,6 +271,7 @@ class MemorySessionStore implements SessionStore {
       _welcomeCompleted = false;
       _measurements = null;
       _sizeLabel = null;
+      _pendingSync = false;
     }
   }
 
@@ -265,15 +285,18 @@ class MemorySessionStore implements SessionStore {
     _avatarBase64 = session.avatarBase64;
     _measurements = session.measurements;
     _sizeLabel = session.sizeLabel;
+    _pendingSync = false;
   }
 
   @override
   Future<void> saveMeasurementProfile(
     Map<String, double> measurements,
-    String? sizeLabel,
-  ) async {
+    String? sizeLabel, {
+    bool pendingSync = false,
+  }) async {
     _measurements = Map<String, double>.from(measurements);
     _sizeLabel = sizeLabel;
+    _pendingSync = pendingSync;
   }
 
   @override

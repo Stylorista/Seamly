@@ -39,15 +39,29 @@ void main() {
     ImagePickerPlatform.instance = oldPicker;
   });
 
-  Future<MemorySessionStore> openApp(WidgetTester tester, _FitApi api) async {
+  Future<MemorySessionStore> openApp(
+    WidgetTester tester,
+    _FitApi api, {
+    MemorySessionStore? store,
+  }) async {
     tester.view.physicalSize = const Size(430, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final store = MemorySessionStore(initialState: _initial);
-    await tester.pumpWidget(SeamlyApp(api: api, sessionStore: store));
+    final opened = store ?? MemorySessionStore(initialState: _initial);
+    await tester.pumpWidget(SeamlyApp(api: api, sessionStore: opened));
     await tester.pumpAndSettle();
-    return store;
+    return opened;
+  }
+
+  Future<void> relaunch(
+    WidgetTester tester,
+    _FitApi api,
+    MemorySessionStore store,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await openApp(tester, api, store: store);
   }
 
   Future<void> openMeasurements(WidgetTester tester) async {
@@ -135,7 +149,61 @@ void main() {
     final restored = await store.read();
     expect(restored.measurements?['chest'], 101.0);
     expect(restored.sizeLabel, 'L');
+    expect(restored.measurementsPendingSync, isTrue);
     expect(find.textContaining('Saved on this phone'), findsOneWidget);
+  });
+
+  testWidgets('unsynced values are sent to the account on the next launch', (
+    tester,
+  ) async {
+    final api = _FitApi()..failSync = true;
+    final store = await openApp(tester, api);
+    await openMeasurements(tester);
+    await tester.enterText(field('Chest / bust *'), '101');
+    await submitForm(tester);
+
+    api.failSync = false;
+    await relaunch(tester, api, store);
+    expect(api.synced.single['chest'], 101.0);
+    final restored = await store.read();
+    expect(restored.measurements?['chest'], 101.0);
+    expect(restored.measurementsPendingSync, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an offline launch keeps newer unsynced values on this phone', (
+    tester,
+  ) async {
+    final api = _FitApi()..failSync = true;
+    final store = await openApp(tester, api);
+    await openMeasurements(tester);
+    await tester.enterText(field('Chest / bust *'), '101');
+    await submitForm(tester);
+
+    await relaunch(tester, api, store);
+    final restored = await store.read();
+    expect(restored.measurements?['chest'], 101.0);
+    expect(restored.sizeLabel, 'L');
+    expect(restored.measurementsPendingSync, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a changed account height drops stale unsynced values', (
+    tester,
+  ) async {
+    final api = _FitApi()..failSync = true;
+    final store = await openApp(tester, api);
+    await openMeasurements(tester);
+    await tester.enterText(field('Chest / bust *'), '101');
+    await submitForm(tester);
+
+    api.serverHeight = 172;
+    await relaunch(tester, api, store);
+    final restored = await store.read();
+    expect(restored.heightCm, 172);
+    expect(restored.measurements?['chest'], isNot(101.0));
+    expect(restored.measurementsPendingSync, isFalse);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a scan whose size fails never keeps the old size', (
@@ -158,6 +226,7 @@ void main() {
 class _FitApi extends SeamlyApi {
   bool failSize = false;
   bool failSync = false;
+  double serverHeight = 165;
   final synced = <Map<String, double>>[];
   final syncedSizes = <String?>[];
 
@@ -167,10 +236,10 @@ class _FitApi extends SeamlyApi {
   }) async => {
     'name': 'Test Person',
     'email': 'person@example.com',
-    'height_cm': 165.0,
+    'height_cm': serverHeight,
     'avatar_base64': null,
-    'latest_measurements': _saved,
-    'size_label': 'M',
+    'latest_measurements': serverHeight == 165 ? _saved : null,
+    'size_label': serverHeight == 165 ? 'M' : null,
   };
 
   @override
@@ -200,7 +269,14 @@ class _FitApi extends SeamlyApi {
     if (failSync) throw const ApiException('Account sync is offline.');
     synced.add(measurements);
     syncedSizes.add(sizeLabel);
-    return {};
+    return {
+      'name': 'Test Person',
+      'email': 'person@example.com',
+      'height_cm': serverHeight,
+      'avatar_base64': null,
+      'latest_measurements': measurements,
+      'size_label': sizeLabel,
+    };
   }
 
   @override

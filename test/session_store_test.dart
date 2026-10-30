@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:seamly/services/session_store.dart';
 
 void main() {
@@ -31,4 +32,36 @@ void main() {
     expect(measurementsFromJson(null), isNull);
     expect(measurementsFromJson('not a map'), isNull);
   });
+
+  test(
+    'pending sync survives restart and is cleared by sync or logout',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = PreferencesSessionStore();
+      await store.saveMeasurementProfile(
+        {'height': 165, 'chest': 101},
+        'L',
+        pendingSync: true,
+      );
+      expect(
+        (await PreferencesSessionStore().read()).measurementsPendingSync,
+        isTrue,
+      );
+      await store.saveMeasurementProfile({'height': 165, 'chest': 101}, 'L');
+      expect(
+        (await PreferencesSessionStore().read()).measurementsPendingSync,
+        isFalse,
+      );
+      await store.saveMeasurementProfile(
+        {'height': 165, 'chest': 101},
+        'L',
+        pendingSync: true,
+      );
+      await store.setAuthenticated(false);
+      expect(
+        (await PreferencesSessionStore().read()).measurementsPendingSync,
+        isFalse,
+      );
+    },
+  );
 }
